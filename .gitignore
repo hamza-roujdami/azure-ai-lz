@@ -1,0 +1,19 @@
+# Only include infra/ in the repo
+*
+!.gitignore
+!infra/
+!infra/**
+
+# Compiled ARM templates (generated from .bicep via `az bicep build`)
+infra/*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Bicep cache
+.bicep/
