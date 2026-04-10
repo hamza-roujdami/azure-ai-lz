@@ -98,6 +98,9 @@ var nsgPeName = 'nsg-cpx-hub-pe-${env}-${regionAbbr}-${instance}'
 var nsgApimName = 'nsg-cpx-hub-apim-${env}-${regionAbbr}-${instance}'
 var acrName = 'acrcpx${env}${regionAbbr}${instance}'
 var apimName = 'apim-cpx-${env}-${regionAbbr}-${instance}'
+var hubKvName = 'kv-cpx-hub-${env}-${regionAbbr}-${instance}'
+var hubUamiName = 'id-cpx-hub-cmk-${env}-${regionAbbr}-${instance}'
+var cmkKeyName = 'cmk-hub-${env}'
 
 // Private DNS zones for the hub
 var privateDnsZones = [
@@ -320,10 +323,63 @@ resource hubRg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// CMK IDENTITY + KEY VAULT (for ACR encryption)
+// ──────────────────────────────────────────────────────────────────────────────
+
+module hubCmkIdentity 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.0' = {
+  scope: hubRg
+  name: 'deploy-hub-cmk-uami'
+  params: {
+    name: hubUamiName
+    location: location
+    tags: tags
+  }
+}
+
+module hubKeyVault 'br/public:avm/res/key-vault/vault:0.13.3' = {
+  scope: hubRg
+  name: 'deploy-hub-kv'
+  params: {
+    name: hubKvName
+    location: location
+    tags: tags
+    sku: 'standard'
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    enablePurgeProtection: true
+    publicNetworkAccess: 'Disabled'
+    networkAcls: {
+      defaultAction: 'Deny'
+      bypass: 'AzureServices'
+    }
+    keys: [
+      {
+        name: cmkKeyName
+        kty: 'RSA'
+        keySize: 2048
+      }
+    ]
+    roleAssignments: [
+      {
+        roleDefinitionIdOrName: 'Key Vault Crypto Service Encryption User'
+        principalId: hubCmkIdentity.outputs.principalId
+        principalType: 'ServicePrincipal'
+      }
+    ]
+    diagnosticSettings: [
+      {
+        workspaceResourceId: logAnalytics.outputs.resourceId
+      }
+    ]
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // ACR PREMIUM (shared across all BU subscriptions)
 //
 // Premium required for: Private Endpoints, zone redundancy, geo-replication,
 // content trust, repo-scoped tokens, retention policies.
+// CMK: encrypted with RSA-2048 key from Hub Key Vault via UAMI.
 //
 // BU Container Apps pull images via: VNet peering → hub PE → ACR
 // Access controlled by AcrPull role per BU managed identity.
@@ -346,6 +402,14 @@ module acr 'br/public:avm/res/container-registry/registry:0.12.0' = {
     exportPolicyStatus: 'disabled'
     retentionPolicyStatus: 'enabled'
     retentionPolicyDays: 30
+    managedIdentities: {
+      userAssignedResourceIds: [hubCmkIdentity.outputs.resourceId]
+    }
+    customerManagedKey: {
+      keyVaultResourceId: hubKeyVault.outputs.resourceId
+      keyName: cmkKeyName
+      userAssignedIdentityResourceId: hubCmkIdentity.outputs.resourceId
+    }
     privateEndpoints: [
       {
         name: 'pe-acr-cpx-${env}-${regionAbbr}-${instance}'

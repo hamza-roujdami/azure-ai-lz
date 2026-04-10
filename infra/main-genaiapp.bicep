@@ -39,6 +39,15 @@ param lawId string
 @description('ACR resource ID from AI Hub (Phase 4) — if provided, grants AcrPull to the BU UAMI')
 param acrId string = ''
 
+@description('Key Vault resource ID for CMK encryption (from Phase 2 — Foundry KV). If provided, enables CMK on App Storage.')
+param cmkKeyVaultId string = ''
+
+@description('CMK key name in the Key Vault (from Phase 2)')
+param cmkKeyName string = ''
+
+@description('CMK UAMI resource ID (from Phase 2 — id-{bu}-cmk). Required when cmkKeyVaultId is set.')
+param cmkIdentityId string = ''
+
 // ──────────────────────────────────────────────────────────────────────────────
 // VARIABLES
 // ──────────────────────────────────────────────────────────────────────────────
@@ -165,6 +174,14 @@ module appStorage 'br/public:avm/res/storage/storage-account:0.26.2' = {
     publicNetworkAccess: 'Disabled'
     minimumTlsVersion: 'TLS1_2'
     requireInfrastructureEncryption: true
+    managedIdentities: !empty(cmkIdentityId) ? {
+      userAssignedResourceIds: [cmkIdentityId]
+    } : null
+    customerManagedKey: !empty(cmkKeyVaultId) ? {
+      keyVaultResourceId: cmkKeyVaultId
+      keyName: cmkKeyName
+      userAssignedIdentityResourceId: cmkIdentityId
+    } : null
     networkAcls: {
       defaultAction: 'Deny'
       bypass: 'AzureServices'
