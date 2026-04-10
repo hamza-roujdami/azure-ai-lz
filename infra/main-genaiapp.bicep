@@ -51,6 +51,7 @@ var rgName = 'rg-${bu}-genaiapp-${env}-${regionAbbr}-${instance}'
 var acaEnvName = 'cae-${bu}-${env}-${regionAbbr}-${instance}'
 var appKvName = 'kv-${bu}-app-${env}-${regionAbbr}-${instance}'
 var appStorageName = 'st${bu}app${env}${regionAbbr}${instance}'
+var acaIdentityName = 'id-${bu}-aca-${env}-${regionAbbr}-${instance}'
 
 // ──────────────────────────────────────────────────────────────────────────────
 // RESOURCE GROUP
@@ -63,7 +64,25 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// STEP 1: CONTAINER APPS ENVIRONMENT (internal, VNet-integrated)
+// STEP 1: USER-ASSIGNED MANAGED IDENTITY (shared by all Container Apps in this BU)
+//
+// Used for: ACR pull (AcrPull role granted on hub ACR), KV access, Storage access.
+// One identity per BU — all apps in this BU share it.
+// Survives app deletion/recreation, can be pre-granted roles before apps exist.
+// ──────────────────────────────────────────────────────────────────────────────
+
+module acaIdentity 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.0' = {
+  scope: rg
+  name: 'deploy-id-aca'
+  params: {
+    name: acaIdentityName
+    location: location
+    tags: tags
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// STEP 2: CONTAINER APPS ENVIRONMENT (internal, VNet-integrated)
 // ──────────────────────────────────────────────────────────────────────────────
 
 module acaEnv 'br/public:avm/res/app/managed-environment:0.8.0' = {
@@ -81,7 +100,7 @@ module acaEnv 'br/public:avm/res/app/managed-environment:0.8.0' = {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// STEP 2: APP KEY VAULT (vendor-managed secrets — separate from Foundry KV)
+// STEP 3: APP KEY VAULT (vendor-managed secrets — separate from Foundry KV)
 // ──────────────────────────────────────────────────────────────────────────────
 
 module appKeyVault 'br/public:avm/res/key-vault/vault:0.13.3' = {
@@ -109,7 +128,7 @@ module appKeyVault 'br/public:avm/res/key-vault/vault:0.13.3' = {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// STEP 3: APP STORAGE ACCOUNT (vendor app data — uploads, RAG sources)
+// STEP 4: APP STORAGE ACCOUNT (vendor app data — uploads, RAG sources)
 // ──────────────────────────────────────────────────────────────────────────────
 
 module appStorage 'br/public:avm/res/storage/storage-account:0.26.2' = {
@@ -147,3 +166,15 @@ output acaEnvName string = acaEnv.outputs.name
 output acaEnvId string = acaEnv.outputs.resourceId
 output appKvName string = appKeyVault.outputs.name
 output appStorageName string = appStorage.outputs.name
+
+@description('BU Container Apps UAMI name')
+output acaIdentityName string = acaIdentity.outputs.name
+
+@description('BU Container Apps UAMI resource ID — used by Container Apps to reference the identity')
+output acaIdentityId string = acaIdentity.outputs.resourceId
+
+@description('BU Container Apps UAMI principal ID — pass this to hub template for AcrPull role')
+output acaIdentityPrincipalId string = acaIdentity.outputs.principalId
+
+@description('BU Container Apps UAMI client ID — used in Container App registry config')
+output acaIdentityClientId string = acaIdentity.outputs.clientId

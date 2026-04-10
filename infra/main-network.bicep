@@ -2,7 +2,7 @@
 // CPX AI Landing Zone — Phase 1: Network Resource Group
 // rg-{bu}-network-{env}-{region}-{instance}
 //
-// Deploys: VNet + 3 Subnets (with NSGs), 7 Private DNS Zones, Monitoring
+// Deploys: VNet + 3 Subnets (with NSGs), 8 Private DNS Zones, Monitoring
 // Uses Azure Verified Modules (AVM) aligned with bicep-ptn-aiml-landing-zone
 // ============================================================================
 
@@ -71,6 +71,7 @@ var privateDnsZones = [
   'privatelink.documents.azure.com'
   'privatelink.blob.${environment().suffixes.storage}'
   'privatelink.vaultcore.azure.net'
+  'privatelink.azurecr.io'
 ]
 
 // ──────────────────────────────────────────────────────────────────────────────

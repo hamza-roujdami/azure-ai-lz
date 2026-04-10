@@ -1,15 +1,19 @@
 # CPX AI Landing Zone — Infrastructure
 
-Bicep IaC for deploying an AI Foundry Landing Zone per Business Unit.
+Bicep IaC for deploying an AI Foundry Landing Zone per Business Unit, plus a shared AI Hub.
 
 ## Architecture
 
-Each BU subscription gets **2 resource groups** deployed in sequence:
+Each BU subscription gets **3 resource groups**, plus 1 shared **AI Hub RG** (or separate subscription in production):
 
 | Phase | Template | Resource Group | Resources |
 |---|---|---|---|
-| 1 | `main-network.bicep` | `rg-{bu}-network-{env}-{region}-{instance}` | VNet, 3 subnets, 3 NSGs, 7 Private DNS zones, Log Analytics, App Insights |
+| 1 | `main-network.bicep` | `rg-{bu}-network-{env}-{region}-{instance}` | VNet, 3 subnets, 3 NSGs, 8 Private DNS zones, Log Analytics, App Insights |
 | 2 | `main-aiservices-custom.bicep` (recommended) | `rg-{bu}-aiservices-{env}-{region}-{instance}` | UAMI, Key Vault (CMK key), Storage (CMK, ZRS), Cosmos DB (CMK, serverless), AI Search (CMK enforcement), AI Foundry Account (CMK) + Project + Connections + RBAC + Capability Hosts |
+| 3 | `main-genaiapp.bicep` | `rg-{bu}-genaiapp-{env}-{region}-{instance}` | UAMI (for ACR pull), Container Apps Environment (internal, VNet-injected), App Key Vault, App Storage |
+| 4 | `main-aihub.bicep` (sandbox) | `rg-cpx-aihub-{env}-{region}-{instance}` | ACR Premium (PE, zone-redundant), Core42 Compass PE (toggle), APIM (toggle) |
+
+> **Production variant**: Use `main-aihub-cpx.bicep` instead — deploys hub VNet + subnets + NSGs + DNS zones + VNet peerings + ACR + APIM + Compass PE, all in a dedicated `cpx-ai-hub` subscription.
 
 ## Phase 2 — Two Variants
 
@@ -24,9 +28,12 @@ Use `main-aiservices-custom.bicep` for CPX and any environment with restrictive 
 
 ```
 infra/
-├── main-network.bicep                   # Phase 1 orchestrator
-├── main-aiservices-custom.bicep         # Phase 2 orchestrator (RECOMMENDED — no deployment scripts)
-├── main-aiservices.bicep                # Phase 2 orchestrator (AVM pattern — unrestricted environments only)
+├── main-network.bicep                   # Phase 1: Networking + Monitoring
+├── main-aiservices-custom.bicep         # Phase 2: AI Services (RECOMMENDED — no deployment scripts)
+├── main-aiservices.bicep                # Phase 2: AI Services (AVM pattern — unrestricted environments only)
+├── main-genaiapp.bicep                  # Phase 3: Container Apps + App Data + UAMI for ACR
+├── main-aihub.bicep                     # Phase 4: Shared AI Hub (sandbox — single subscription)
+├── main-aihub-cpx.bicep                 # Phase 4: Shared AI Hub (CPX production — own subscription + hub VNet)
 └── modules/
     ├── custom-ai-foundry/               # Policy-safe custom modules (no ACI, no scripts)
     │   ├── README.md                    # Integration guide
@@ -48,8 +55,12 @@ infra/
 - `avm/res/network/virtual-network:0.7.0`
 - `avm/res/network/network-security-group:0.5.0`
 - `avm/res/network/private-dns-zone:0.7.0`
+- `avm/res/network/private-endpoint:0.12.0`
 - `avm/res/operational-insights/workspace:0.12.0`
 - `avm/res/insights/component:0.6.0`
+- `avm/res/app/managed-environment:0.8.0`
+- `avm/res/container-registry/registry:0.12.0`
+- `avm/res/api-management/service:0.12.0` (APIM — used in `main-aihub-cpx.bicep`)
 
 ## Prerequisites
 
@@ -117,6 +128,52 @@ az deployment sub create \
     dnsZoneIds="$DNS_ZONES"
 ```
 
+### Phase 3 — GenAI App
+
+```bash
+ACA_SUBNET=$(az deployment sub show --name $PHASE1_NAME --query "properties.outputs.acaSubnetId.value" -o tsv)
+
+az deployment sub create \
+  --location uaenorth \
+  --template-file main-genaiapp.bicep \
+  --name "phase3-genaiapp-$(date +%Y%m%d%H%M)" \
+  --parameters \
+    location='uaenorth' \
+    bu='csd' \
+    regionAbbr='uaen' \
+    env='dev' \
+    acaSubnetId="$ACA_SUBNET" \
+    lawId="$LAW_ID"
+```
+
+This creates a **user-assigned managed identity** (`id-{bu}-aca-{env}-{region}-{instance}`) for Container Apps to pull images from ACR. The output `acaIdentityPrincipalId` is needed for Phase 4.
+
+### Phase 4 — AI Hub (ACR)
+
+```bash
+# Get the ACR DNS zone ID (index 7 in the network output)
+ACR_DNS=$(az network private-dns zone show -g $RG_NET -n privatelink.azurecr.io --query id -o tsv)
+
+# Get the BU UAMI principal ID from Phase 3
+PHASE3_NAME="<phase3-deployment-name>"
+CSD_PRINCIPAL=$(az deployment sub show --name $PHASE3_NAME --query "properties.outputs.acaIdentityPrincipalId.value" -o tsv)
+
+az deployment sub create \
+  --location uaenorth \
+  --template-file main-aihub.bicep \
+  --name "phase4-aihub-$(date +%Y%m%d%H%M)" \
+  --parameters \
+    location='uaenorth' \
+    regionAbbr='uaen' \
+    env='dev' \
+    peSubnetId="$PE_SUBNET" \
+    lawId="$LAW_ID" \
+    acrDnsZoneId="$ACR_DNS" \
+    acrPullPrincipalIds="[{\"principalId\":\"$CSD_PRINCIPAL\",\"name\":\"csd-aca\"}]"
+```
+
+> As more BUs onboard, add their UAMI principal IDs to the `acrPullPrincipalIds` array and redeploy.
+
 ## Parameters
 
 ### Required (both phases)
@@ -134,7 +191,7 @@ az deployment sub create \
 | `deployerPrincipalId` | Entra Object ID of the deployer (for KV admin role) |
 | `peSubnetId` | PE subnet resource ID (from Phase 1 output) |
 | `lawId` | Log Analytics Workspace ID (from Phase 1 output) |
-| `dnsZoneIds` | Array of 7 Private DNS Zone IDs (from Phase 1, order matters — see below) |
+| `dnsZoneIds` | Array of 8 Private DNS Zone IDs (from Phase 1, order matters — see below) |
 
 ### Optional
 
@@ -157,6 +214,7 @@ The `dnsZoneIds` array **must** follow this order (matching `main-network.bicep`
 | 4 | `privatelink.documents.azure.com` |
 | 5 | `privatelink.blob.core.windows.net` |
 | 6 | `privatelink.vaultcore.azure.net` |
+| 7 | `privatelink.azurecr.io` |
 
 ## Deploying for Another BU
 
