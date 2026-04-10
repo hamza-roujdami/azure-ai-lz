@@ -9,23 +9,38 @@ Each BU subscription gets **2 resource groups** deployed in sequence:
 | Phase | Template | Resource Group | Resources |
 |---|---|---|---|
 | 1 | `main-network.bicep` | `rg-{bu}-network-{env}-{region}-{instance}` | VNet, 3 subnets, 3 NSGs, 7 Private DNS zones, Log Analytics, App Insights |
-| 2 | `main-aiservices.bicep` | `rg-{bu}-aiservices-{env}-{region}-{instance}` | UAMI, Key Vault (CMK key), Storage (CMK, ZRS), Cosmos DB (CMK, serverless), AI Search (CMK enforcement), AI Foundry Account (CMK) + Project + Connections + RBAC + Capability Hosts |
+| 2 | `main-aiservices-custom.bicep` (recommended) | `rg-{bu}-aiservices-{env}-{region}-{instance}` | UAMI, Key Vault (CMK key), Storage (CMK, ZRS), Cosmos DB (CMK, serverless), AI Search (CMK enforcement), AI Foundry Account (CMK) + Project + Connections + RBAC + Capability Hosts |
+
+## Phase 2 — Two Variants
+
+| Template | Uses | Deployment Scripts | Policy-safe |
+|---|---|---|---|
+| `main-aiservices-custom.bicep` **(recommended)** | Custom modules (`modules/custom-ai-foundry/`) | None | Yes — works with zone-resilient, MCSB v2, deny-deployment-scripts policies |
+| `main-aiservices.bicep` | AVM pattern (`avm/ptn/ai-ml/ai-foundry:0.6.0`) | Yes (3 internal scripts) | No — blocked by policies that deny `Microsoft.Resources/deploymentScripts` or non-zone-redundant ACI/Storage |
+
+Use `main-aiservices-custom.bicep` for CPX and any environment with restrictive Azure Policies.
 
 ## File Structure
 
 ```
 infra/
-├── main-network.bicep              # Phase 1 orchestrator
-├── main-aiservices.bicep            # Phase 2 orchestrator
+├── main-network.bicep                   # Phase 1 orchestrator
+├── main-aiservices-custom.bicep         # Phase 2 orchestrator (RECOMMENDED — no deployment scripts)
+├── main-aiservices.bicep                # Phase 2 orchestrator (AVM pattern — unrestricted environments only)
 └── modules/
+    ├── custom-ai-foundry/               # Policy-safe custom modules (no ACI, no scripts)
+    │   ├── README.md                    # Integration guide
+    │   ├── account.bicep                # AI Foundry Account + PE + DNS
+    │   ├── project.bicep                # Project + 3 Connections (Cosmos, Storage, Search)
+    │   ├── rbac-assignments.bicep       # 6 RBAC role assignments (Project MI → stores)
+    │   └── capability-hosts.bicep       # Agent Service capability hosts
     ├── ai-foundry/
-    │   ├── cmk-encryption.bicep     # CMK update on AI Foundry Account
-    │   └── kv-role-assignment.bicep  # KV Crypto role for AI Account MI
-    └── cosmos-db-account.bicep      # Cosmos DB with CMK (raw resource)
+    │   ├── cmk-encryption.bicep         # CMK update on AI Foundry Account
+    │   └── kv-role-assignment.bicep     # KV Crypto role for AI Account MI
+    └── cosmos-db-account.bicep          # Cosmos DB with CMK (raw resource)
 ```
 
-**AVM modules referenced from Bicep public registry** (downloaded automatically):
-- `avm/ptn/ai-ml/ai-foundry:0.6.0` — AI Foundry Account, Project, Connections, RBAC, Capability Hosts
+**AVM resource modules** (downloaded automatically from Bicep public registry):
 - `avm/res/key-vault/vault:0.13.3`
 - `avm/res/storage/storage-account:0.26.2`
 - `avm/res/search/search-service:0.11.1`
@@ -89,7 +104,7 @@ DNS_ZONES=$(az network private-dns zone list -g $RG_NET --query "[].id" -o json)
 
 az deployment sub create \
   --location uaenorth \
-  --template-file main-aiservices.bicep \
+  --template-file main-aiservices-custom.bicep \
   --name "phase2-aiservices-$(date +%Y%m%d%H%M)" \
   --parameters \
     location='uaenorth' \
@@ -173,6 +188,7 @@ All resources are deployed with:
 
 ## Known Limitations
 
+- **AVM AI Foundry pattern blocked by policies**: The AVM `avm/ptn/ai-ml/ai-foundry` module uses `Microsoft.Resources/deploymentScripts` internally, which creates temporary ACI + Storage. These are blocked by zone-resilient, MCSB v2, and shared-key policies. Use `main-aiservices-custom.bicep` instead — it uses raw Bicep resources with no deployment scripts. See [Deployment Scripts docs](https://learn.microsoft.com/en-us/azure/azure-resource-manager/templates/deployment-script-template) for details.
 - **Cosmos DB CMK**: Uses a raw Bicep resource (not AVM) because the published AVM Cosmos module (v0.18.0) does not support `customerManagedKey` yet
 - **UAE North Cosmos zone redundancy**: May not have AZ capacity — set `isZoneRedundant: false` in `modules/cosmos-db-account.bicep` if needed
 - **AI Account CMK**: The CMK update module (`cmk-encryption.bicep`) may hit transient Azure internal errors — safe to retry the deployment
