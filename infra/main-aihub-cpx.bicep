@@ -76,13 +76,6 @@ param apimPublisherEmail string = 'platform@cpx.ae'
 @description('APIM publisher name (required when deployApim = true)')
 param apimPublisherName string = 'CPX Platform Team'
 
-@description('BU managed identity principal IDs that need AcrPull on the shared ACR. Array of objects: [{principalId, name}]')
-param acrPullPrincipalIds array = []
-// Example: [
-//   { principalId: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx', name: 'csd-cae' }
-//   { principalId: 'yyyyyyyy-yyyy-yyyy-yyyy-yyyyyyyyyyyy', name: 'crs-cae' }
-// ]
-
 // ──────────────────────────────────────────────────────────────────────────────
 // VARIABLES
 // ──────────────────────────────────────────────────────────────────────────────
@@ -353,11 +346,6 @@ module acr 'br/public:avm/res/container-registry/registry:0.12.0' = {
     exportPolicyStatus: 'disabled'
     retentionPolicyStatus: 'enabled'
     retentionPolicyDays: 30
-    roleAssignments: [for identity in acrPullPrincipalIds: {
-      roleDefinitionIdOrName: 'AcrPull'
-      principalId: identity.principalId
-      principalType: 'ServicePrincipal'
-    }]
     privateEndpoints: [
       {
         name: 'pe-acr-cpx-${env}-${regionAbbr}-${instance}'

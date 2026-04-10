@@ -36,6 +36,9 @@ param acaSubnetId string
 @description('Log Analytics Workspace ID (from Phase 1)')
 param lawId string
 
+@description('ACR resource ID from AI Hub (Phase 4) — if provided, grants AcrPull to the BU UAMI')
+param acrId string = ''
+
 // ──────────────────────────────────────────────────────────────────────────────
 // VARIABLES
 // ──────────────────────────────────────────────────────────────────────────────
@@ -78,6 +81,23 @@ module acaIdentity 'br/public:avm/res/managed-identity/user-assigned-identity:0.
     name: acaIdentityName
     location: location
     tags: tags
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// STEP 1b: AcrPull role on shared ACR (self-contained — no hub redeploy needed)
+//
+// Scoped to the ACR resource. Works cross-RG and cross-subscription as long as
+// the deployer has Owner or User Access Administrator on the ACR.
+// Skipped if acrId is empty (hub not deployed yet).
+// ──────────────────────────────────────────────────────────────────────────────
+
+module acrPullRole 'modules/acr-pull-role.bicep' = if (!empty(acrId)) {
+  scope: resourceGroup(split(acrId, '/')[2], split(acrId, '/')[4])
+  name: 'deploy-acrpull-${bu}'
+  params: {
+    acrName: last(split(acrId, '/'))!
+    principalId: acaIdentity.outputs.principalId
   }
 }
 
@@ -173,7 +193,7 @@ output acaIdentityName string = acaIdentity.outputs.name
 @description('BU Container Apps UAMI resource ID — used by Container Apps to reference the identity')
 output acaIdentityId string = acaIdentity.outputs.resourceId
 
-@description('BU Container Apps UAMI principal ID — pass this to hub template for AcrPull role')
+@description('BU Container Apps UAMI principal ID')
 output acaIdentityPrincipalId string = acaIdentity.outputs.principalId
 
 @description('BU Container Apps UAMI client ID — used in Container App registry config')

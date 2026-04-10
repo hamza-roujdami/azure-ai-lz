@@ -49,10 +49,6 @@ param deployCompassPe bool = false
 @description('Core42 Compass Private Link Service resource ID (required when deployCompassPe = true)')
 param compassPlsId string = ''
 
-@description('BU managed identity principal IDs that need AcrPull on the shared ACR. Array of objects: [{principalId, name}]')
-param acrPullPrincipalIds array = []
-// Example: [{ principalId: 'xxxxxxxx-...', name: 'csd-cae' }]
-
 // ──────────────────────────────────────────────────────────────────────────────
 // VARIABLES
 // ──────────────────────────────────────────────────────────────────────────────
@@ -101,11 +97,6 @@ module acr 'br/public:avm/res/container-registry/registry:0.12.0' = {
     exportPolicyStatus: 'disabled'
     retentionPolicyStatus: 'enabled'
     retentionPolicyDays: 30
-    roleAssignments: [for identity in acrPullPrincipalIds: {
-      roleDefinitionIdOrName: 'AcrPull'
-      principalId: identity.principalId
-      principalType: 'ServicePrincipal'
-    }]
     privateEndpoints: [
       {
         name: 'pe-acr-cpx-${env}-${regionAbbr}-${instance}'
