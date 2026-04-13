@@ -213,7 +213,7 @@ module acr 'br/public:avm/res/container-registry/registry:0.12.0' = {
 //   compassGroupId = 'fep1'
 // ──────────────────────────────────────────────────────────────────────────────
 
-module compassPe 'modules/compass-pe.bicep' = if (deployCompassPe && !empty(compassResourceId)) {
+module compassPe 'modules/aihub/compass-pe.bicep' = if (deployCompassPe && !empty(compassResourceId)) {
   scope: rg
   name: 'deploy-pe-compass'
   params: {
@@ -241,7 +241,7 @@ module compassPe 'modules/compass-pe.bicep' = if (deployCompassPe && !empty(comp
 // Workspaces + APIs + backends are configured after deployment (not in IaC).
 // ──────────────────────────────────────────────────────────────────────────────
 
-module apim 'modules/apim-premiumv2.bicep' = if (deployApim) {
+module apim 'modules/aihub/apim-premiumv2.bicep' = if (deployApim) {
   scope: rg
   name: 'deploy-apim'
   params: {

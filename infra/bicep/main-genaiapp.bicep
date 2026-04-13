@@ -101,7 +101,7 @@ module acaIdentity 'br/public:avm/res/managed-identity/user-assigned-identity:0.
 // Skipped if acrId is empty (hub not deployed yet).
 // ──────────────────────────────────────────────────────────────────────────────
 
-module acrPullRole 'modules/acr-pull-role.bicep' = if (!empty(acrId)) {
+module acrPullRole 'modules/genaiapp/acr-pull-role.bicep' = if (!empty(acrId)) {
   scope: resourceGroup(split(acrId, '/')[2], split(acrId, '/')[4])
   name: 'deploy-acrpull-${bu}'
   params: {

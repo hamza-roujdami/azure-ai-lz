@@ -1,4 +1,4 @@
-using 'main-aihub.bicep'
+using '../main-aihub.bicep'
 
 // ============================================================================
 // Sandbox: AI Hub — Sweden Central

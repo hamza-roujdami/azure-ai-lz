@@ -213,7 +213,7 @@ module storage 'br/public:avm/res/storage/storage-account:0.26.2' = {
 // STEP 3: COSMOS DB (CMK, no local auth, serverless, PE) — Raw resource for CMK
 // ──────────────────────────────────────────────────────────────────────────────
 
-module cosmosDb 'modules/cosmos-db-account.bicep' = {
+module cosmosDb 'modules/aiservices/cosmos-db-account.bicep' = {
   scope: rg
   name: 'deploy-cosmos-foundry'
   params: {
@@ -278,7 +278,7 @@ module search 'br/public:avm/res/search/search-service:0.11.1' = {
 // STEP 5: AI FOUNDRY ACCOUNT (custom modules — NO deployment scripts, policy-safe)
 // ──────────────────────────────────────────────────────────────────────────────
 
-module aiAccount 'modules/custom-ai-foundry/account.bicep' = {
+module aiAccount 'modules/aiservices/ai-foundry-account.bicep' = {
   scope: rg
   name: 'deploy-ai-account'
   params: {
@@ -294,7 +294,7 @@ module aiAccount 'modules/custom-ai-foundry/account.bicep' = {
 // STEP 6: Grant AI Account MI KV Crypto role (must propagate before CMK step)
 // ──────────────────────────────────────────────────────────────────────────────
 
-module aiAccountKvRole 'modules/ai-foundry/kv-role-assignment.bicep' = {
+module aiAccountKvRole 'modules/aiservices/kv-role-assignment.bicep' = {
   scope: rg
   name: 'deploy-ai-account-kv-role'
   params: {
@@ -308,7 +308,7 @@ module aiAccountKvRole 'modules/ai-foundry/kv-role-assignment.bicep' = {
 // STEP 7: CMK — Update AI Account with CMK encryption
 // ──────────────────────────────────────────────────────────────────────────────
 
-module cmkSetup 'modules/ai-foundry/cmk-encryption.bicep' = {
+module cmkSetup 'modules/aiservices/cmk-encryption.bicep' = {
   scope: rg
   name: 'deploy-cmk-setup'
   params: {
@@ -324,7 +324,7 @@ module cmkSetup 'modules/ai-foundry/cmk-encryption.bicep' = {
 // STEP 8: AI FOUNDRY PROJECT + CONNECTIONS
 // ──────────────────────────────────────────────────────────────────────────────
 
-module aiProject 'modules/custom-ai-foundry/project.bicep' = {
+module aiProject 'modules/aiservices/ai-foundry-project.bicep' = {
   scope: rg
   name: 'deploy-ai-project'
   params: {
@@ -343,7 +343,7 @@ module aiProject 'modules/custom-ai-foundry/project.bicep' = {
 // STEP 9: RBAC — Project identity → backing stores
 // ──────────────────────────────────────────────────────────────────────────────
 
-module rbacAssignments 'modules/custom-ai-foundry/rbac-assignments.bicep' = {
+module rbacAssignments 'modules/aiservices/ai-foundry-rbac.bicep' = {
   scope: rg
   name: 'deploy-rbac'
   params: {
@@ -358,7 +358,7 @@ module rbacAssignments 'modules/custom-ai-foundry/rbac-assignments.bicep' = {
 // STEP 10: CAPABILITY HOSTS (account + project — NO deployment scripts)
 // ──────────────────────────────────────────────────────────────────────────────
 
-module capabilityHosts 'modules/custom-ai-foundry/capability-hosts.bicep' = {
+module capabilityHosts 'modules/aiservices/ai-foundry-capability-hosts.bicep' = {
   scope: rg
   name: 'deploy-capability-hosts'
   params: {

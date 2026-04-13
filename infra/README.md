@@ -13,24 +13,12 @@ Each BU subscription gets **3 resource groups**, plus 1 shared **AI Hub RG** (or
 | 3 | `main-genaiapp.bicep` | `rg-{bu}-genaiapp-{env}-{region}-{instance}` | UAMI (for ACR pull), Container Apps Environment (internal, VNet-injected), App Key Vault, App Storage |
 | 4 | `main-aihub.bicep` (sandbox) | `rg-cpx-aihub-{env}-{region}-{instance}` | ACR Premium (PE, zone-redundant), Core42 Compass PE (toggle), APIM (toggle) |
 
-> **Production variant**: Use `main-aihub-cpx.bicep` instead — deploys hub VNet + subnets + NSGs + DNS zones + VNet peerings + ACR + APIM + Compass PE, all in a dedicated `cpx-ai-hub` subscription.
-
-## Phase 2 — Two Variants
-
-| Template | Uses | Deployment Scripts | Policy-safe |
-|---|---|---|---|
-| `main-aiservices-custom.bicep` **(recommended)** | Custom modules (`modules/custom-ai-foundry/`) | None | Yes — works with zone-resilient, MCSB v2, deny-deployment-scripts policies |
-| `main-aiservices.bicep` | AVM pattern (`avm/ptn/ai-ml/ai-foundry:0.6.0`) | Yes (3 internal scripts) | No — blocked by policies that deny `Microsoft.Resources/deploymentScripts` or non-zone-redundant ACI/Storage |
-
-Use `main-aiservices-custom.bicep` for CPX and any environment with restrictive Azure Policies.
-
 ## File Structure
 
 ```
 infra/
 ├── main-network.bicep                   # Phase 1: Networking + Monitoring
-├── main-aiservices-custom.bicep         # Phase 2: AI Services (RECOMMENDED — no deployment scripts)
-├── main-aiservices.bicep                # Phase 2: AI Services (AVM pattern — unrestricted environments only)
+├── main-aiservices-custom.bicep         # Phase 2: AI Services (policy-safe, no deployment scripts)
 ├── main-genaiapp.bicep                  # Phase 3: Container Apps + App Data + UAMI for ACR
 ├── main-aihub.bicep                     # Phase 4: Shared AI Hub (sandbox — single subscription)
 ├── main-aihub-cpx.bicep                 # Phase 4: Shared AI Hub (CPX production — own subscription + hub VNet)
@@ -176,7 +164,7 @@ az deployment sub create \
 
 This creates a **user-assigned managed identity** (`id-{bu}-aca-{env}-{region}-{instance}`) for Container Apps to pull images from ACR. The output `acaIdentityPrincipalId` is needed for Phase 4.
 
-### Phase 4 — AI Hub (ACR)
+### Phase 4 — AI Hub
 
 ```bash
 # Get the ACR DNS zone ID (index 7 in the network output)

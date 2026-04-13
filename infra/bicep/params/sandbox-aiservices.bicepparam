@@ -1,4 +1,4 @@
-using 'main-aiservices-custom.bicep'
+using '../main-aiservices.bicep'
 
 // ============================================================================
 // Sandbox: CSD Business Unit — Sweden Central

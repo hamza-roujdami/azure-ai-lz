@@ -1,4 +1,4 @@
-using 'main-network.bicep'
+using '../main-network.bicep'
 
 // ============================================================================
 // Sandbox: CSD Business Unit — Sweden Central

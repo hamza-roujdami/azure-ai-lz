@@ -6,7 +6,13 @@
 
 # Compiled ARM templates (generated from .bicep via `az bicep build`)
 infra/**/*.json
-!infra/bicepconfig.json
+!infra/bicep/bicepconfig.json
+
+# Terraform state and providers (never commit)
+infra/tf/.terraform/
+infra/tf/*.tfstate
+infra/tf/*.tfstate.backup
+infra/tf/.terraform.lock.hcl
 
 # OS files
 .DS_Store

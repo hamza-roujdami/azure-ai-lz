@@ -1,4 +1,4 @@
-using 'main-genaiapp.bicep'
+using '../main-genaiapp.bicep'
 
 // ============================================================================
 // Sandbox: CSD Business Unit — Sweden Central
