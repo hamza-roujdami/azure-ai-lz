@@ -64,11 +64,15 @@ param spokeVnetPeerings array = []
 @description('Deploy APIM AI Gateway (Premium) — ~$2,800/mo, requires backend URL')
 param deployApim bool = false
 
-@description('Deploy Core42 Compass Private Endpoint — requires PLS resource ID from Core42')
+@description('Deploy Core42 Compass Private Endpoint — requires Resource ID + group ID from Core42')
 param deployCompassPe bool = false
 
-@description('Core42 Compass Private Link Service resource ID (required when deployCompassPe = true)')
-param compassPlsId string = ''
+@description('Core42 Compass App Gateway resource ID (provided by Compass team)')
+param compassResourceId string = ''
+// Compass guide value: /subscriptions/194bbe9f-.../applicationGateways/SaaS-cmpss-prod-agw01-agw-uan
+
+@description('Core42 Compass sub-resource / group ID (provided by Compass team)')
+param compassGroupId string = 'fep1'
 
 @description('APIM publisher email (required when deployApim = true)')
 param apimPublisherEmail string = 'platform@cpx.ae'
@@ -432,18 +436,19 @@ module acr 'br/public:avm/res/container-registry/registry:0.12.0' = {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// CORE42 COMPASS PRIVATE ENDPOINT (toggle — needs PLS ID from Core42)
+// CORE42 COMPASS PRIVATE ENDPOINT (manual connection — needs Compass approval)
 //
-// Core42 provides a Private Link Service (PLS) resource ID.
-// This creates a PE in the hub's snet-pe that connects to their PLS.
-// APIM then routes LLM requests through this PE.
+// Core42 Compass uses a cross-tenant PE to their Application Gateway.
+// This is a MANUAL connection — after deployment, Compass team reviews and
+// approves the PE (up to 24 hours). Until approved, status = 'Pending'.
 //
 // To enable:
 //   deployCompassPe = true
-//   compassPlsId = '/subscriptions/.../providers/Microsoft.Network/privateLinkServices/...'
+//   compassResourceId = '<Resource ID from Compass team>'
+//   compassGroupId = 'fep1'
 // ──────────────────────────────────────────────────────────────────────────────
 
-module compassPe 'br/public:avm/res/network/private-endpoint:0.12.0' = if (deployCompassPe && !empty(compassPlsId)) {
+module compassPe 'modules/compass-pe.bicep' = if (deployCompassPe && !empty(compassResourceId)) {
   scope: hubRg
   name: 'deploy-pe-compass'
   params: {
@@ -451,14 +456,8 @@ module compassPe 'br/public:avm/res/network/private-endpoint:0.12.0' = if (deplo
     location: location
     tags: tags
     subnetResourceId: hubVnet.outputs.subnetResourceIds[0] // snet-pe
-    privateLinkServiceConnections: [
-      {
-        name: 'pls-compass-cpx-${env}-${regionAbbr}-${instance}'
-        properties: {
-          privateLinkServiceId: compassPlsId
-        }
-      }
-    ]
+    compassResourceId: compassResourceId
+    compassGroupId: compassGroupId
   }
 }
 
