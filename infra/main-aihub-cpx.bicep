@@ -475,6 +475,7 @@ module compassPe 'modules/compass-pe.bicep' = if (deployCompassPe && !empty(comp
 // Cost: ~$2,800/mo (Premium, 1 unit)
 // ──────────────────────────────────────────────────────────────────────────────
 
+#disable-next-line BCP081
 module apim 'br/public:avm/res/api-management/service:0.12.0' = if (deployApim) {
   scope: hubRg
   name: 'deploy-apim'

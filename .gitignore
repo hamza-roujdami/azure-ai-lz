@@ -5,7 +5,8 @@
 !infra/**
 
 # Compiled ARM templates (generated from .bicep via `az bicep build`)
-infra/*.json
+infra/**/*.json
+!infra/bicepconfig.json
 
 # OS files
 .DS_Store

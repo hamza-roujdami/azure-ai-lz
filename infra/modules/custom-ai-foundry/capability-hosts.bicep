@@ -45,6 +45,7 @@ resource projectCapabilityHost 'Microsoft.CognitiveServices/accounts/projects/ca
   name: 'caphost-project'
   parent: project
   properties: {
+    #disable-next-line BCP037
     capabilityHostKind: 'Agents'
     vectorStoreConnections: [searchConnectionName]
     storageConnections: [storageConnectionName]

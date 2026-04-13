@@ -85,6 +85,31 @@ infra/
 
 ## Deployment
 
+### Quick Start (using parameter files)
+
+Parameter files for the sandbox are in `params/`. Deploy with:
+
+```bash
+cd infra/
+
+# Set deployer ID for AI Services
+export DEPLOYER_PRINCIPAL_ID=$(az ad signed-in-user show --query id -o tsv)
+
+# Phase 1 — Network
+az deployment sub create --location swedencentral --parameters params/sandbox-network.bicepparam
+
+# Phase 2 — AI Services
+az deployment sub create --location swedencentral --parameters params/sandbox-aiservices.bicepparam
+
+# Phase 3 — GenAI App
+az deployment sub create --location swedencentral --parameters params/sandbox-genaiapp.bicepparam
+
+# Phase 4 — AI Hub
+az deployment sub create --location swedencentral --parameters params/sandbox-aihub.bicepparam
+```
+
+### Manual Deployment (inline parameters)
+
 ### Phase 1 — Network
 
 ```bash
