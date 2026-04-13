@@ -1,6 +1,8 @@
-# Only include infra/ in the repo
+# Only include infra/ and project docs in the repo
 *
 !.gitignore
+!README.md
+!cpx-context.md
 !infra/
 !infra/**
 

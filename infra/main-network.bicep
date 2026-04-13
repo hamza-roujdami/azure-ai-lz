@@ -2,7 +2,7 @@
 // CPX AI Landing Zone — Phase 1: Network Resource Group
 // rg-{bu}-network-{env}-{region}-{instance}
 //
-// Deploys: VNet + 3 Subnets (with NSGs), 8 Private DNS Zones, Monitoring
+// Deploys: VNet + 4 Subnets (with NSGs), 8 Private DNS Zones, Monitoring
 // Uses Azure Verified Modules (AVM) aligned with bicep-ptn-aiml-landing-zone
 // ============================================================================
 
@@ -40,6 +40,9 @@ param agentSubnetPrefix string = '192.168.1.0/24'
 @description('Container Apps subnet prefix')
 param acaSubnetPrefix string = '192.168.2.0/24'
 
+@description('APIM subnet prefix (/24 for VNet injection)')
+param apimSubnetPrefix string = '192.168.3.0/24'
+
 // ──────────────────────────────────────────────────────────────────────────────
 // VARIABLES
 // ──────────────────────────────────────────────────────────────────────────────
@@ -61,6 +64,7 @@ var appiName = 'appi-${bu}-${env}-${regionAbbr}-${instance}'
 var nsgPeName = 'nsg-${bu}-pe-${env}-${regionAbbr}-${instance}'
 var nsgAgentName = 'nsg-${bu}-agent-${env}-${regionAbbr}-${instance}'
 var nsgAcaName = 'nsg-${bu}-aca-${env}-${regionAbbr}-${instance}'
+var nsgApimName = 'nsg-${bu}-apim-${env}-${regionAbbr}-${instance}'
 
 // Private DNS zone names
 var privateDnsZones = [
@@ -164,8 +168,74 @@ module nsgAca 'br/public:avm/res/network/network-security-group:0.5.0' = {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// VIRTUAL NETWORK + 3 SUBNETS (with NSG association)
+// VIRTUAL NETWORK + 4 SUBNETS (with NSG association)
+
+module nsgApim 'br/public:avm/res/network/network-security-group:0.5.0' = {
+  scope: rg
+  name: 'deploy-nsg-apim'
+  params: {
+    name: nsgApimName
+    location: location
+    tags: tags
+    securityRules: [
+      {
+        name: 'AllowApimManagement'
+        properties: {
+          priority: 100
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: 'ApiManagement'
+          sourcePortRange: '*'
+          destinationAddressPrefix: 'VirtualNetwork'
+          destinationPortRange: '3443'
+        }
+      }
+      {
+        name: 'AllowAzureLoadBalancer'
+        properties: {
+          priority: 110
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: 'AzureLoadBalancer'
+          sourcePortRange: '*'
+          destinationAddressPrefix: 'VirtualNetwork'
+          destinationPortRange: '6390'
+        }
+      }
+      {
+        name: 'AllowVNetInbound443'
+        properties: {
+          priority: 200
+          direction: 'Inbound'
+          access: 'Allow'
+          protocol: 'Tcp'
+          sourceAddressPrefix: 'VirtualNetwork'
+          sourcePortRange: '*'
+          destinationAddressPrefix: 'VirtualNetwork'
+          destinationPortRange: '443'
+        }
+      }
+      {
+        name: 'DenyAllInbound'
+        properties: {
+          priority: 4096
+          direction: 'Inbound'
+          access: 'Deny'
+          protocol: '*'
+          sourceAddressPrefix: '*'
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '*'
+        }
+      }
+    ]
+  }
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
+// VIRTUAL NETWORK + 4 SUBNETS (with NSG association)
 
 module vnet 'br/public:avm/res/network/virtual-network:0.7.0' = {
   scope: rg
@@ -193,6 +263,12 @@ module vnet 'br/public:avm/res/network/virtual-network:0.7.0' = {
         addressPrefix: acaSubnetPrefix
         networkSecurityGroupResourceId: nsgAca.outputs.resourceId
         delegation: 'Microsoft.App/environments'
+      }
+      {
+        name: 'snet-apim'
+        addressPrefix: apimSubnetPrefix
+        networkSecurityGroupResourceId: nsgApim.outputs.resourceId
+        delegation: 'Microsoft.Web/hostingEnvironments'
       }
     ]
   }
@@ -273,6 +349,9 @@ output agentSubnetId string = vnet.outputs.subnetResourceIds[1]
 
 @description('Container Apps subnet Resource ID')
 output acaSubnetId string = vnet.outputs.subnetResourceIds[2]
+
+@description('APIM subnet Resource ID')
+output apimSubnetId string = vnet.outputs.subnetResourceIds[3]
 
 @description('Log Analytics Workspace Resource ID')
 output lawId string = logAnalytics.outputs.resourceId

@@ -40,8 +40,17 @@ param lawId string
 @description('Resource ID of the privatelink.azurecr.io DNS zone (from BU network RG)')
 param acrDnsZoneId string
 
-@description('Deploy APIM AI Gateway (Premium) — requires backend URL configuration')
+@description('Deploy APIM AI Gateway (Premium v2) — ~$700/mo')
 param deployApim bool = false
+
+@description('APIM publisher email (required when deployApim = true)')
+param apimPublisherEmail string = 'platform@cpx.ae'
+
+@description('APIM publisher name (required when deployApim = true)')
+param apimPublisherName string = 'CPX Platform Team'
+
+@description('APIM subnet resource ID for VNet injection (from Phase 1 — snet-apim)')
+param apimSubnetId string = ''
 
 @description('Deploy Core42 Compass Private Endpoint — requires PLS resource ID from Core42')
 param deployCompassPe bool = false
@@ -62,6 +71,7 @@ var tags = {
 
 var rgName = 'rg-cpx-aihub-${env}-${regionAbbr}-${instance}'
 var acrName = 'acrcpx${env}${regionAbbr}${instance}'
+var apimName = 'apim-cpx-${env}-${regionAbbr}-${instance}'
 var hubKvName = 'kv-cpx-hub-${env}-${regionAbbr}-${instance}'
 var hubUamiName = 'id-cpx-hub-cmk-${env}-${regionAbbr}-${instance}'
 var cmkKeyName = 'cmk-hub-${env}'
@@ -210,15 +220,33 @@ module compassPe 'br/public:avm/res/network/private-endpoint:0.12.0' = if (deplo
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// APIM AI GATEWAY — PLACEHOLDER
+// STEP 4: APIM AI GATEWAY (Premium v2 — toggle)
 //
-// APIM Premium (~$2,800/mo) is deferred until:
-//   1. Core42 Compass backend URL is confirmed
-//   2. Cost approval from CPX
-//   3. APIM workspace design is finalized (9 BU workspaces)
+// Premium v2: ~$700/mo (vs $2,800 classic Premium)
+//   ✓ Workspaces (1 per BU: ws-csd, ws-crs, etc.)
+//   ✓ Full VNet injection (no public IP) — in production via main-aihub-cpx.bicep
+//   ✓ Availability zones
+//   ✓ Private endpoints
 //
-// When ready, set deployApim = true and add APIM module here.
+// In sandbox: deployed without VNet injection (no dedicated APIM subnet).
+// In production: main-aihub-cpx.bicep uses snet-apim for full VNet injection.
+//
+// Workspaces + APIs + backends are configured after deployment (not in IaC).
 // ──────────────────────────────────────────────────────────────────────────────
+
+module apim 'modules/apim-premiumv2.bicep' = if (deployApim) {
+  scope: rg
+  name: 'deploy-apim'
+  params: {
+    name: apimName
+    location: location
+    tags: tags
+    publisherEmail: apimPublisherEmail
+    publisherName: apimPublisherName
+    lawId: lawId
+    subnetResourceId: apimSubnetId
+  }
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // OUTPUTS
@@ -235,3 +263,11 @@ output acrId string = acr.outputs.resourceId
 
 @description('ACR login server (e.g., acrcpxdevswc001.azurecr.io)')
 output acrLoginServer string = acr.outputs.loginServer
+
+@description('APIM name (empty if not deployed)')
+#disable-next-line BCP318
+output apimName string = deployApim ? apim.outputs.apimName : ''
+
+@description('APIM gateway URL (empty if not deployed)')
+#disable-next-line BCP318
+output apimGatewayUrl string = deployApim ? apim.outputs.gatewayUrl : ''
