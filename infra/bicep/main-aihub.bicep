@@ -1,15 +1,14 @@
 // ============================================================================
-// CPX AI Landing Zone — AI Hub Resource Group
-// rg-cpx-aihub-{env}-{region}-{instance}
+// Azure AI Landing Zone — AI Hub Resource Group
+// rg-{org}-aihub-{env}-{region}-{instance}
 //
-// Deploys: ACR Premium (+ PE + DNS) — shared across all BU subscriptions
+// Deploys: ACR Premium (+ PE + DNS)
 //
 // Deferred (parameterized toggles):
 //   - APIM AI Gateway (Premium) — deployApim = false
 //   - Core42 Compass PE          — deployCompassPe = false
 //
-// In production this deploys to the cpx-ai-hub subscription.
-// In sandbox it deploys to the same subscription used for BU testing.
+// Can deploy to the same subscription as BU or a separate hub subscription.
 // ============================================================================
 
 targetScope = 'subscription'
@@ -31,6 +30,9 @@ param regionAbbr string
 @description('Instance number')
 param instance string = '001'
 
+@description('Organization prefix for resource naming (e.g., cpx, contoso, myorg)')
+param org string
+
 @description('PE subnet resource ID (from BU spoke or hub VNet) for ACR Private Endpoint')
 param peSubnetId string
 
@@ -44,16 +46,31 @@ param acrDnsZoneId string
 param deployApim bool = false
 
 @description('APIM publisher email (required when deployApim = true)')
-param apimPublisherEmail string = 'platform@cpx.ae'
+param apimPublisherEmail string = 'admin@example.com'
 
 @description('APIM publisher name (required when deployApim = true)')
-param apimPublisherName string = 'CPX Platform Team'
+param apimPublisherName string = 'Platform Team'
 
 @description('APIM subnet resource ID for VNet injection (from Phase 1 — snet-apim)')
 param apimSubnetId string = ''
 
 @description('Deploy Core42 Compass Private Endpoint — requires Resource ID + group ID from Core42')
 param deployCompassPe bool = false
+
+@description('Deploy Compass API configuration on APIM (requires deployApim = true)')
+param deployCompassApi bool = false
+
+@description('Core42 Compass API key secret name in Hub Key Vault')
+param compassApiKeySecretName string = 'compass-api-key'
+
+@description('Core42 Compass backend URL')
+param compassBackendUrl string = 'https://api.core42.ai/openai'
+
+@description('List of Compass model names available via APIM')
+param compassModels array = [
+  'jais-70b'
+  'falcon-180b'
+]
 
 @description('Core42 Compass App Gateway resource ID (provided by Compass team)')
 param compassResourceId string = ''
@@ -69,15 +86,15 @@ param compassGroupId string = 'fep1'
 var tags = {
   BusinessUnit: 'PLATFORM'
   Environment: env
-  Project: 'cpx-ai-landing-zone'
+  Project: 'ai-landing-zone'
   ManagedBy: 'Bicep-AVM'
 }
 
-var rgName = 'rg-cpx-aihub-${env}-${regionAbbr}-${instance}'
-var acrName = 'acrcpx${env}${regionAbbr}${instance}'
-var apimName = 'apim-cpx-${env}-${regionAbbr}-${instance}'
-var hubKvName = 'kv-cpx-hub-${env}-${regionAbbr}-${instance}'
-var hubUamiName = 'id-cpx-hub-cmk-${env}-${regionAbbr}-${instance}'
+var rgName = 'rg-${org}-aihub-${env}-${regionAbbr}-${instance}'
+var acrName = 'acr${org}${env}${regionAbbr}${instance}'
+var apimName = 'apim-${org}-${env}-${regionAbbr}-${instance}'
+var hubKvName = 'kv-${org}-hub-${env}-${regionAbbr}-${instance}'
+var hubUamiName = 'id-${org}-hub-cmk-${env}-${regionAbbr}-${instance}'
 var cmkKeyName = 'cmk-hub-${env}'
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -177,7 +194,7 @@ module acr 'br/public:avm/res/container-registry/registry:0.12.0' = {
     }
     privateEndpoints: [
       {
-        name: 'pe-acr-cpx-${env}-${regionAbbr}-${instance}'
+        name: 'pe-acr-${org}-${env}-${regionAbbr}-${instance}'
         subnetResourceId: peSubnetId
         privateDnsZoneGroup: {
           privateDnsZoneGroupConfigs: [
@@ -217,7 +234,7 @@ module compassPe 'modules/aihub/compass-pe.bicep' = if (deployCompassPe && !empt
   scope: rg
   name: 'deploy-pe-compass'
   params: {
-    name: 'pe-compass-cpx-${env}-${regionAbbr}-${instance}'
+    name: 'pe-compass-${org}-${env}-${regionAbbr}-${instance}'
     location: location
     tags: tags
     subnetResourceId: peSubnetId
@@ -230,13 +247,12 @@ module compassPe 'modules/aihub/compass-pe.bicep' = if (deployCompassPe && !empt
 // STEP 4: APIM AI GATEWAY (Premium v2 — toggle)
 //
 // Premium v2: ~$700/mo (vs $2,800 classic Premium)
-//   ✓ Workspaces (1 per BU: ws-csd, ws-crs, etc.)
-//   ✓ Full VNet injection (no public IP) — in production via main-aihub-cpx.bicep
+//   ✓ Workspaces (1 per BU)
+//   ✓ Full VNet injection (no public IP)
 //   ✓ Availability zones
 //   ✓ Private endpoints
 //
 // In sandbox: deployed without VNet injection (no dedicated APIM subnet).
-// In production: main-aihub-cpx.bicep uses snet-apim for full VNet injection.
 //
 // Workspaces + APIs + backends are configured after deployment (not in IaC).
 // ──────────────────────────────────────────────────────────────────────────────
@@ -256,6 +272,48 @@ module apim 'modules/aihub/apim-premiumv2.bicep' = if (deployApim) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// STEP 5: COMPASS API ON APIM (operations + policies)
+//
+// Configures APIM as an OpenAI-compatible proxy to Core42 Compass:
+//   - ListDeployments: returns available models (static JSON)
+//   - GetDeployment: returns model details (dynamic from URL)
+//   - ChatCompletions: forwards to Compass, injects API key from KV
+//
+// Requires: Compass API key stored in Hub Key Vault as a secret.
+// APIM reads it via Named Value (Key Vault reference, system MI).
+//
+// Prerequisites:
+//   1. Store Compass API key: az keyvault secret set --vault-name <hubKv> --name compass-api-key --value <key>
+//   2. APIM system MI needs Key Vault Secrets User role on Hub KV
+// ──────────────────────────────────────────────────────────────────────────────
+
+// Grant APIM system MI read access to Hub KV secrets (for Named Value)
+module apimKvRole 'modules/aihub/apim-kv-role.bicep' = if (deployApim && deployCompassApi) {
+  scope: rg
+  name: 'deploy-apim-kv-secrets-role'
+  params: {
+    keyVaultName: hubKvName
+    #disable-next-line BCP318
+    principalId: apim.outputs.principalId
+  }
+  dependsOn: [hubKeyVault]
+}
+
+module compassApi 'modules/aihub/apim-compass-api.bicep' = if (deployApim && deployCompassApi) {
+  scope: rg
+  name: 'deploy-apim-compass-api'
+  params: {
+    #disable-next-line BCP318
+    apimName: apim.outputs.apimName
+    backendUrl: compassBackendUrl
+    keyVaultUri: hubKeyVault.outputs.uri
+    compassApiKeySecretName: compassApiKeySecretName
+    models: compassModels
+  }
+  dependsOn: [apimKvRole]
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // OUTPUTS
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -268,7 +326,7 @@ output acrName string = acr.outputs.name
 @description('ACR resource ID')
 output acrId string = acr.outputs.resourceId
 
-@description('ACR login server (e.g., acrcpxdevswc001.azurecr.io)')
+@description('ACR login server (e.g., acrorgdevswc001.azurecr.io)')
 output acrLoginServer string = acr.outputs.loginServer
 
 @description('APIM name (empty if not deployed)')
@@ -278,3 +336,7 @@ output apimName string = deployApim ? apim.outputs.apimName : ''
 @description('APIM gateway URL (empty if not deployed)')
 #disable-next-line BCP318
 output apimGatewayUrl string = deployApim ? apim.outputs.gatewayUrl : ''
+
+@description('Compass API endpoint on APIM (empty if not deployed)')
+#disable-next-line BCP318
+output compassEndpointUrl string = (deployApim && deployCompassApi) ? compassApi.outputs.compassEndpointUrl : ''

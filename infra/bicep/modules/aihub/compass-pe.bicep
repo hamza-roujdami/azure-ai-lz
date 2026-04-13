@@ -44,7 +44,7 @@ resource compassPe 'Microsoft.Network/privateEndpoints@2024-05-01' = {
           groupIds: [
             compassGroupId
           ]
-          requestMessage: 'CPX AI Landing Zone - Private Endpoint request for Compass API access'
+          requestMessage: 'AI Landing Zone - Private Endpoint request for Compass API access'
         }
       }
     ]

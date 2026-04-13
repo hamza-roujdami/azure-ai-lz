@@ -9,6 +9,7 @@ param location = 'swedencentral'
 param env = 'dev'
 param regionAbbr = 'swc'
 param instance = '001'
+param org = 'cpx'
 
 // Phase 1 outputs
 param peSubnetId = '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-network-dev-swc-001/providers/Microsoft.Network/virtualNetworks/vnet-csd-dev-swc-001/subnets/snet-pe'

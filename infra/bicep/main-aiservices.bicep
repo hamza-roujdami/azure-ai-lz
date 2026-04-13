@@ -1,5 +1,5 @@
 // ============================================================================
-// CPX AI Landing Zone — Phase 2: AI Services Resource Group
+// Azure AI Landing Zone — Phase 2: AI Services Resource Group
 // rg-{bu}-aiservices-{env}-{region}-{instance}
 //
 // Deploys: Key Vault (CMK) → Cosmos DB → Storage → AI Search →
@@ -44,6 +44,19 @@ param lawId string
 @description('Private DNS Zone IDs (from Phase 1) - ordered: cognitiveservices, openai, services.ai, search, documents, blob, vaultcore')
 param dnsZoneIds array
 
+@description('Deploy APIM connection on Foundry project (requires APIM endpoint URL and subscription key)')
+param deployApimConnection bool = false
+
+@description('APIM Compass API endpoint URL (from Phase 4 output)')
+param apimCompassEndpointUrl string = ''
+
+@description('APIM subscription key for the Compass API')
+@secure()
+param apimSubscriptionKey string = ''
+
+@description('Foundry connection name for APIM (agents reference models as {connectionName}/{modelName})')
+param apimConnectionName string = 'compass-connection'
+
 // ──────────────────────────────────────────────────────────────────────────────
 // VARIABLES
 // ──────────────────────────────────────────────────────────────────────────────
@@ -51,7 +64,7 @@ param dnsZoneIds array
 var tags = {
   BusinessUnit: toUpper(bu)
   Environment: env
-  Project: 'cpx-ai-landing-zone'
+  Project: 'ai-landing-zone'
   ManagedBy: 'Bicep-AVM'
 }
 
@@ -369,6 +382,31 @@ module capabilityHosts 'modules/aiservices/ai-foundry-capability-hosts.bicep' = 
     searchConnectionName: aiProject.outputs.searchConnectionName
   }
   dependsOn: [rbacAssignments]
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// STEP 11: APIM CONNECTION (external LLM via APIM — toggle)
+//
+// Creates an ApiManagement category connection on the Foundry project.
+// Foundry agents use this to discover and call external LLM models through APIM.
+// Models are referenced as: compass-connection/jais-70b
+//
+// Prerequisites:
+//   - Phase 4 deployed with deployApim=true and deployCompassApi=true
+//   - APIM subscription key available
+// ──────────────────────────────────────────────────────────────────────────────
+
+module apimConnection 'modules/aiservices/foundry-apim-connection.bicep' = if (deployApimConnection && !empty(apimCompassEndpointUrl)) {
+  scope: rg
+  name: 'deploy-foundry-apim-connection'
+  params: {
+    accountName: aiAccount.outputs.name
+    projectName: projectName
+    connectionName: apimConnectionName
+    targetUrl: apimCompassEndpointUrl
+    apimSubscriptionKey: apimSubscriptionKey
+  }
+  dependsOn: [capabilityHosts]
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

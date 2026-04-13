@@ -1,8 +1,15 @@
-# Only include infra/ in the repo
+# Only include infra/ and root docs in the repo
 *
 !.gitignore
+!README.md
 !infra/
 !infra/**
+
+# Design doc (kept locally, not in repo)
+design-doc.md
+
+# Reference repos (cloned locally for analysis, not in repo)
+references/
 
 # Compiled ARM templates (generated from .bicep via `az bicep build`)
 infra/**/*.json

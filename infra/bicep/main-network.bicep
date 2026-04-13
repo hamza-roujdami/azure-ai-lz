@@ -1,5 +1,5 @@
 // ============================================================================
-// CPX AI Landing Zone — Phase 1: Network Resource Group
+// Azure AI Landing Zone — Phase 1: Network Resource Group
 // rg-{bu}-network-{env}-{region}-{instance}
 //
 // Deploys: VNet + 4 Subnets (with NSGs), 8 Private DNS Zones, Monitoring
@@ -50,7 +50,7 @@ param apimSubnetPrefix string = '192.168.3.0/24'
 var tags = {
   BusinessUnit: toUpper(bu)
   Environment: env
-  Project: 'cpx-ai-landing-zone'
+  Project: 'ai-landing-zone'
   ManagedBy: 'Bicep-AVM'
 }
 

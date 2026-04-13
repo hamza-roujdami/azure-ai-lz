@@ -1,5 +1,5 @@
 // ============================================================================
-// CPX AI Landing Zone — Phase 3: GenAI App Resource Group
+// Azure AI Landing Zone — Phase 3: GenAI App Resource Group
 // rg-{bu}-genaiapp-{env}-{region}-{instance}
 //
 // Deploys: Container Apps Environment → App Key Vault → App Storage
@@ -55,7 +55,7 @@ param cmkIdentityId string = ''
 var tags = {
   BusinessUnit: toUpper(bu)
   Environment: env
-  Project: 'cpx-ai-landing-zone'
+  Project: 'ai-landing-zone'
   ManagedBy: 'Bicep-AVM'
 }
 
