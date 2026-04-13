@@ -62,7 +62,7 @@
 
 | RG | Example (CSD DEV) | Contains | Vendor Access | Protection |
 |----|-------------------|---------|--------------|------------|
-| **rg-{bu}-network-{env}-uaen-001** | rg-csd-network-dev-uaen-001 | VNet, 3 Subnets, 3 NSGs, 8 Private DNS zones, Log Analytics, App Insights | Reader | RG-level CanNotDelete lock |
+| **rg-{bu}-network-{env}-uaen-001** | rg-csd-network-dev-uaen-001 | VNet, 4 Subnets, 4 NSGs, 8 Private DNS zones, Log Analytics, App Insights | Reader | RG-level CanNotDelete lock |
 | **rg-{bu}-aiservices-{env}-uaen-001** | rg-csd-aiservices-dev-uaen-001 | AI Foundry Account + Project + Agent Service + Capability Hosts, UAMI (CMK), Key Vault, Storage (CMK), Cosmos DB (CMK), AI Search (CMK enforcement) | Contributor | Resource-level locks on Account + data stores |
 | **rg-{bu}-genaiapp-{env}-uaen-001** | rg-csd-genaiapp-dev-uaen-001 | UAMI (ACR pull), Container Apps Env, App Key Vault, App Storage (CMK) | Contributor | Resource-level locks on data stores |
 | **rg-cpx-aihub-{env}-uaen-001** | rg-cpx-aihub-dev-uaen-001 | UAMI (CMK), Hub Key Vault, ACR Premium (CMK, PE), [APIM, Compass PE — deferred] | Platform only | N/A |
@@ -80,7 +80,7 @@
 
 | RG | Status | Template | Key Resources |
 |----|--------|----------|---------------|
-| `rg-csd-network-dev-swc-001` | Deployed | `main-network.bicep` | VNet (3 subnets, 3 NSGs), 8 DNS zones, LAW, AppInsights |
+| `rg-csd-network-dev-swc-001` | Deployed | `main-network.bicep` | VNet (4 subnets, 4 NSGs), 8 DNS zones, LAW, AppInsights |
 | `rg-csd-aiservices-dev-swc-001` | Deployed | `main-aiservices-custom.bicep` | AI Foundry (Account + Project + Agent Service), KV, Storage, Cosmos, Search — all CMK |
 | `rg-csd-genaiapp-dev-swc-001` | Deployed | `main-genaiapp.bicep` | UAMI (`id-csd-aca`), Container Apps Env (internal, ZR), App KV, App Storage (CMK) |
 | `rg-cpx-aihub-dev-swc-001` | Deployed | `main-aihub.bicep` | UAMI (`id-cpx-hub-cmk`), Hub KV, ACR Premium (CMK, PE, ZR) |
@@ -152,7 +152,7 @@
 
 | Template | Phase | Scope | Description |
 |----------|-------|-------|-------------|
-| `main-network.bicep` | 1 | BU | VNet, 3 subnets, 3 NSGs, 8 DNS zones, LAW, AppInsights |
+| `main-network.bicep` | 1 | BU | VNet, 4 subnets, 4 NSGs, 8 DNS zones, LAW, AppInsights |
 | `main-aiservices-custom.bicep` | 2 | BU | AI Foundry + data stores with CMK — **recommended** (no deployment scripts) |
 | `main-aiservices.bicep` | 2 | BU | AI Foundry via AVM pattern — unrestricted environments only |
 | `main-genaiapp.bicep` | 3 | BU | Container Apps Env, App KV, App Storage (CMK), UAMI, AcrPull |
@@ -171,6 +171,8 @@
 | `modules/ai-foundry/kv-role-assignment.bicep` | KV Crypto role for AI Account MI |
 | `modules/cosmos-db-account.bicep` | Cosmos DB with CMK (raw Bicep — AVM doesn't support CMK yet) |
 | `modules/acr-pull-role.bicep` | AcrPull role assignment (cross-RG, self-contained per BU) |
+| `modules/apim-premiumv2.bicep` | APIM Premium v2 with optional VNet injection (Internal mode) |
+| `modules/compass-pe.bicep` | Core42 Compass PE (manual connection to Compass App Gateway, groupId fep1) |
 
 ### AVM Modules Used
 
@@ -238,7 +240,7 @@ Phase 3 auto-assigns AcrPull on the hub ACR — no hub redeploy needed.
 
 ## Networking
 
-- **Per-BU VNet** (`192.168.0.0/22`) with 3 subnets: `snet-pe` (/25), `snet-foundry-agents` (/24), `snet-container-apps` (/24)
+- **Per-BU VNet** (`192.168.0.0/22`) with 4 subnets: `snet-pe` (/25), `snet-foundry-agents` (/24), `snet-container-apps` (/24), `snet-apim` (/24, delegated to Microsoft.Web/hostingEnvironments)
 - **Hub VNet** (`10.0.0.0/22`, production only): `snet-pe` (/25), `snet-apim` (/24)
 - **8 Private DNS zones:** cognitiveservices, openai, services.ai, search, documents, blob, vaultcore, azurecr.io
 - **NSGs:** deny-all-inbound default per subnet; APIM subnet has mgmt port 3443, LB 6390, VNet 443
@@ -281,14 +283,14 @@ Phase 3 auto-assigns AcrPull on the hub ACR — no hub redeploy needed.
 
 ## What's Deferred / Blocked
 
-| Item | Blocker | Template Ready |
-|------|---------|---------------|
-| APIM AI Gateway (Premium) | Cost approval (~$2,800/mo) + Compass backend URL | Yes — `deployApim = true` toggle in both hub templates |
-| Core42 Compass PE | Core42 must provide Private Link Service resource ID | Yes — `deployCompassPe = true` + `compassPlsId` param |
-| App Gateway + WAF | Design not finalized (multi-site routing per BU) | Not started |
-| CI/CD pipeline | Waiting for CPX to confirm pipeline tooling (ADO / GitHub Actions) | Not started |
-| PROD subscriptions | Depends on Phase 1-3 validation in DEV | Not started |
-| AI Search local auth disable | Agent Service may require API key auth — needs testing | Parameterizable |
+| Item | Blocker | Template Ready | Status |
+|------|---------|---------------|--------|
+| APIM AI Gateway (Premium v2) | Provisioning failed in swedencentral (VNet injection). Works in UAE North. | Yes — `deployApim = true` + `apimSubnetId` | **Created** (Failed state in sandbox, template correct) |
+| Core42 Compass PE | Compass team must approve the manual PE connection (up to 24h) | Yes — `deployCompassPe = true` + `compassResourceId` + `compassGroupId = 'fep1'` | **Template ready**, not deployed |
+| App Gateway + WAF | Design not finalized (multi-site routing per BU) | Not started | - |
+| CI/CD pipeline | Waiting for CPX to confirm pipeline tooling (ADO / GitHub Actions) | Not started | - |
+| PROD subscriptions | Depends on Phase 1-3 validation in DEV | Not started | - |
+| AI Search local auth disable | Agent Service may require API key auth — needs testing | Parameterizable | - |
 
 ---
 

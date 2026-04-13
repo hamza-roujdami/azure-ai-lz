@@ -44,7 +44,10 @@ infra/
     ├── ai-foundry/
     │   ├── cmk-encryption.bicep         # CMK update on AI Foundry Account
     │   └── kv-role-assignment.bicep     # KV Crypto role for AI Account MI
-    └── cosmos-db-account.bicep          # Cosmos DB with CMK (raw resource)
+    ├── cosmos-db-account.bicep          # Cosmos DB with CMK (raw resource)
+    ├── acr-pull-role.bicep              # AcrPull role assignment (cross-RG, self-contained per BU)
+    ├── apim-premiumv2.bicep             # APIM Premium v2 with optional VNet injection (Internal mode)
+    └── compass-pe.bicep                 # Core42 Compass PE (manual connection to Compass App Gateway)
 ```
 
 **AVM resource modules** (downloaded automatically from Bicep public registry):
