@@ -43,6 +43,9 @@ param acaSubnetPrefix string = '192.168.2.0/24'
 @description('APIM subnet prefix (/24 for VNet injection)')
 param apimSubnetPrefix string = '192.168.3.0/24'
 
+@description('Deploy ACR DNS zone in BU network (set false when Hub subscription owns the ACR DNS zone)')
+param deployAcrDnsZone bool = false
+
 // ──────────────────────────────────────────────────────────────────────────────
 // VARIABLES
 // ──────────────────────────────────────────────────────────────────────────────
@@ -67,7 +70,8 @@ var nsgAcaName = 'nsg-${bu}-aca-${env}-${regionAbbr}-${instance}'
 var nsgApimName = 'nsg-${bu}-apim-${env}-${regionAbbr}-${instance}'
 
 // Private DNS zone names
-var privateDnsZones = [
+// When Hub subscription owns ACR DNS zone, skip 'privatelink.azurecr.io' here
+var privateDnsZones = union([
   'privatelink.cognitiveservices.azure.com'
   'privatelink.openai.azure.com'
   'privatelink.services.ai.azure.com'
@@ -75,8 +79,7 @@ var privateDnsZones = [
   'privatelink.documents.azure.com'
   'privatelink.blob.${environment().suffixes.storage}'
   'privatelink.vaultcore.azure.net'
-  'privatelink.azurecr.io'
-]
+], deployAcrDnsZone ? ['privatelink.azurecr.io'] : [])
 
 // ──────────────────────────────────────────────────────────────────────────────
 // RESOURCE GROUP

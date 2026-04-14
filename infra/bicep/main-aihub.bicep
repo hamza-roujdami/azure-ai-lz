@@ -1,14 +1,16 @@
 // ============================================================================
-// Azure AI Landing Zone — AI Hub Resource Group
+// Azure AI Landing Zone — AI Hub Resource Group (separate subscription)
 // rg-{org}-aihub-{env}-{region}-{instance}
 //
-// Deploys: ACR Premium (+ PE + DNS)
+// Self-contained: creates its own VNet, subnets, DNS zones, and LAW.
+// Deploys to a SEPARATE subscription from BU spokes.
 //
-// Deferred (parameterized toggles):
-//   - APIM AI Gateway (Premium) — deployApim = false
-//   - Core42 Compass PE          — deployCompassPe = false
+// Deploys: Hub VNet + subnets, ACR Premium (+ PE + DNS), Hub KV, Hub UAMI
 //
-// Can deploy to the same subscription as BU or a separate hub subscription.
+// Toggleable:
+//   - APIM AI Gateway (Premium v2) — deployApim = false
+//   - Core42 Compass PE            — deployCompassPe = false
+//   - Compass API on APIM          — deployCompassApi = false
 // ============================================================================
 
 targetScope = 'subscription'
@@ -33,14 +35,14 @@ param instance string = '001'
 @description('Organization prefix for resource naming (e.g., cpx, contoso, myorg)')
 param org string
 
-@description('PE subnet resource ID (from BU spoke or hub VNet) for ACR Private Endpoint')
-param peSubnetId string
+@description('Hub VNet address prefix')
+param hubVnetAddressPrefix string = '10.100.0.0/22'
 
-@description('Log Analytics Workspace resource ID for diagnostics')
-param lawId string
+@description('Hub PE subnet address prefix')
+param hubPeSubnetPrefix string = '10.100.0.0/26'
 
-@description('Resource ID of the privatelink.azurecr.io DNS zone (from BU network RG)')
-param acrDnsZoneId string
+@description('Hub APIM subnet address prefix (needed when deployApim = true)')
+param hubApimSubnetPrefix string = '10.100.1.0/24'
 
 @description('Deploy APIM AI Gateway (Premium v2) — ~$700/mo')
 param deployApim bool = false
@@ -50,9 +52,6 @@ param apimPublisherEmail string = 'admin@example.com'
 
 @description('APIM publisher name (required when deployApim = true)')
 param apimPublisherName string = 'Platform Team'
-
-@description('APIM subnet resource ID for VNet injection (from Phase 1 — snet-apim)')
-param apimSubnetId string = ''
 
 @description('Deploy Core42 Compass Private Endpoint — requires Resource ID + group ID from Core42')
 param deployCompassPe bool = false
@@ -79,6 +78,9 @@ param compassResourceId string = ''
 @description('Core42 Compass sub-resource / group ID (provided by Compass team)')
 param compassGroupId string = 'fep1'
 
+@description('Array of BU identities that need AcrPull on the hub ACR. Each entry: {name: "csd", principalId: "xxx"}')
+param buAcrPullPrincipals array = []
+
 // ──────────────────────────────────────────────────────────────────────────────
 // VARIABLES
 // ──────────────────────────────────────────────────────────────────────────────
@@ -91,6 +93,8 @@ var tags = {
 }
 
 var rgName = 'rg-${org}-aihub-${env}-${regionAbbr}-${instance}'
+var hubVnetName = 'vnet-${org}-hub-${env}-${regionAbbr}-${instance}'
+var hubLawName = 'law-${org}-hub-${env}-${regionAbbr}-${instance}'
 var acrName = 'acr${org}${env}${regionAbbr}${instance}'
 var apimName = 'apim-${org}-${env}-${regionAbbr}-${instance}'
 var hubKvName = 'kv-${org}-hub-${env}-${regionAbbr}-${instance}'
@@ -105,6 +109,76 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
   name: rgName
   location: location
   tags: tags
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// HUB NETWORK — VNet, subnets, DNS zones, Log Analytics
+//
+// Self-contained: Hub has its own VNet with PE + APIM subnets.
+// BU spokes reach Hub resources through the platform firewall (no VNet peering).
+// Private DNS zones are created here and linked to the Hub VNet.
+// Platform team must add VNet links to BU spoke VNets for DNS resolution.
+// ──────────────────────────────────────────────────────────────────────────────
+
+module hubVnet 'br/public:avm/res/network/virtual-network:0.7.0' = {
+  scope: rg
+  name: 'deploy-hub-vnet'
+  params: {
+    name: hubVnetName
+    location: location
+    tags: tags
+    addressPrefixes: [hubVnetAddressPrefix]
+    subnets: [
+      {
+        name: 'snet-pe'
+        addressPrefix: hubPeSubnetPrefix
+      }
+      {
+        name: 'snet-apim'
+        addressPrefix: hubApimSubnetPrefix
+      }
+    ]
+  }
+}
+
+module hubLaw 'br/public:avm/res/operational-insights/workspace:0.12.0' = {
+  scope: rg
+  name: 'deploy-hub-law'
+  params: {
+    name: hubLawName
+    location: location
+    tags: tags
+  }
+}
+
+module acrDnsZone 'br/public:avm/res/network/private-dns-zone:0.7.0' = {
+  scope: rg
+  name: 'deploy-dns-acr'
+  params: {
+    name: 'privatelink.azurecr.io'
+    tags: tags
+    virtualNetworkLinks: [
+      {
+        virtualNetworkResourceId: hubVnet.outputs.resourceId
+        registrationEnabled: false
+      }
+    ]
+  }
+}
+
+module kvDnsZone 'br/public:avm/res/network/private-dns-zone:0.7.0' = {
+  scope: rg
+  name: 'deploy-dns-kv'
+  params: {
+    name: 'privatelink.vaultcore.azure.net'
+    tags: tags
+    virtualNetworkLinks: [
+      {
+        virtualNetworkResourceId: hubVnet.outputs.resourceId
+        registrationEnabled: false
+      }
+    ]
+  }
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -153,7 +227,7 @@ module hubKeyVault 'br/public:avm/res/key-vault/vault:0.13.3' = {
     ]
     diagnosticSettings: [
       {
-        workspaceResourceId: lawId
+        workspaceResourceId: hubLaw.outputs.resourceId
       }
     ]
   }
@@ -195,11 +269,11 @@ module acr 'br/public:avm/res/container-registry/registry:0.12.0' = {
     privateEndpoints: [
       {
         name: 'pe-acr-${org}-${env}-${regionAbbr}-${instance}'
-        subnetResourceId: peSubnetId
+        subnetResourceId: hubVnet.outputs.subnetResourceIds[0] // snet-pe
         privateDnsZoneGroup: {
           privateDnsZoneGroupConfigs: [
             {
-              privateDnsZoneResourceId: acrDnsZoneId
+              privateDnsZoneResourceId: acrDnsZone.outputs.resourceId
             }
           ]
         }
@@ -207,7 +281,7 @@ module acr 'br/public:avm/res/container-registry/registry:0.12.0' = {
     ]
     diagnosticSettings: [
       {
-        workspaceResourceId: lawId
+        workspaceResourceId: hubLaw.outputs.resourceId
       }
     ]
   }
@@ -237,7 +311,7 @@ module compassPe 'modules/aihub/compass-pe.bicep' = if (deployCompassPe && !empt
     name: 'pe-compass-${org}-${env}-${regionAbbr}-${instance}'
     location: location
     tags: tags
-    subnetResourceId: peSubnetId
+    subnetResourceId: hubVnet.outputs.subnetResourceIds[0] // snet-pe
     compassResourceId: compassResourceId
     compassGroupId: compassGroupId
   }
@@ -252,7 +326,7 @@ module compassPe 'modules/aihub/compass-pe.bicep' = if (deployCompassPe && !empt
 //   ✓ Availability zones
 //   ✓ Private endpoints
 //
-// In sandbox: deployed without VNet injection (no dedicated APIM subnet).
+// VNet injection uses snet-apim from the Hub VNet.
 //
 // Workspaces + APIs + backends are configured after deployment (not in IaC).
 // ──────────────────────────────────────────────────────────────────────────────
@@ -266,8 +340,8 @@ module apim 'modules/aihub/apim-premiumv2.bicep' = if (deployApim) {
     tags: tags
     publisherEmail: apimPublisherEmail
     publisherName: apimPublisherName
-    lawId: lawId
-    subnetResourceId: apimSubnetId
+    lawId: hubLaw.outputs.resourceId
+    subnetResourceId: hubVnet.outputs.subnetResourceIds[1] // snet-apim
   }
 }
 
@@ -314,11 +388,49 @@ module compassApi 'modules/aihub/apim-compass-api.bicep' = if (deployApim && dep
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// STEP 6: ACR PULL ROLE ASSIGNMENTS (BU identities → hub ACR)
+//
+// Each BU subscription creates a UAMI for Container Apps (id-{bu}-aca).
+// That UAMI needs AcrPull on the hub ACR to pull container images.
+//
+// In a firewall-routed hub-spoke topology (no VNet peering), traffic flows:
+//   BU spoke ACA → UDR → Platform Firewall → AI Hub ACR PE (port 443)
+//
+// The platform firewall must allow:
+//   Source: snet-aca / snet-foundry-agents (BU spokes)
+//   Destination: ACR PE private IP (AI Hub snet-pe)
+//   Port: 443 (TCP)
+//
+// Docs:
+//   - ACR Private Link: https://learn.microsoft.com/azure/container-registry/container-registry-private-link
+//   - ACR Firewall rules: https://learn.microsoft.com/azure/container-registry/container-registry-firewall-access-rules
+//   - Container Apps networking: https://learn.microsoft.com/azure/container-apps/networking
+// ──────────────────────────────────────────────────────────────────────────────
+
+module acrPullRoles 'modules/aihub/acr-pull-role.bicep' = [for p in buAcrPullPrincipals: {
+  scope: rg
+  name: 'acr-pull-${p.name}'
+  params: {
+    acrName: acr.outputs.name
+    principalId: p.principalId
+  }
+}]
+
+// ──────────────────────────────────────────────────────────────────────────────
 // OUTPUTS
 // ──────────────────────────────────────────────────────────────────────────────
 
 @description('AI Hub Resource Group name')
 output rgName string = rg.name
+
+@description('Hub VNet resource ID')
+output hubVnetId string = hubVnet.outputs.resourceId
+
+@description('Hub PE subnet resource ID')
+output hubPeSubnetId string = hubVnet.outputs.subnetResourceIds[0]
+
+@description('Hub LAW resource ID')
+output hubLawId string = hubLaw.outputs.resourceId
 
 @description('ACR name')
 output acrName string = acr.outputs.name

@@ -23,7 +23,7 @@ Each business unit gets its own subscription with **4 resource groups**, deploye
 | 1 — Network | `rg-{bu}-network` | VNet (4 subnets), NSGs, 8 Private DNS zones, Log Analytics, App Insights |
 | 2 — AI Services | `rg-{bu}-aiservices` | AI Foundry Account + Project, Key Vault, Storage, Cosmos DB, AI Search — all with CMK + Private Endpoints |
 | 3 — GenAI App | `rg-{bu}-genaiapp` | Container Apps Environment, App Key Vault, App Storage, Managed Identity |
-| 4 — AI Hub | `rg-{bu}-aihub` | ACR, APIM AI Gateway (toggleable), External LLM Private Endpoint (toggleable) |
+| 4 — AI Hub | `rg-{org}-aihub` | ACR + AcrPull roles for BUs, APIM AI Gateway (toggleable), External LLM PE (toggleable) |
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -73,27 +73,39 @@ Each business unit gets its own subscription with **4 resource groups**, deploye
 ### Prerequisites
 
 - Azure CLI ≥ 2.60 with Bicep ≥ 0.30
-- Owner or Contributor + User Access Administrator on the target subscription
+- **Two subscriptions:** one for BU workloads, one for AI Hub (ACR, APIM, Compass)
+- Owner or Contributor + User Access Administrator on both subscriptions
 
-### Deploy (Sandbox)
+### Deploy
 
 ```bash
 cd infra/bicep
-
-# Your Entra Object ID (needed for Key Vault admin role)
 export DEPLOYER_PRINCIPAL_ID=$(az ad signed-in-user show --query id -o tsv)
 
-# Phase 1 — Network
-az deployment sub create -l swedencentral -p params/sandbox-network.bicepparam
+# ── Hub Subscription ──────────────────────────────────────────────────────
+az account set -s <HUB_SUBSCRIPTION_ID>
 
-# Phase 2 — AI Services
-az deployment sub create -l swedencentral -p params/sandbox-aiservices.bicepparam
+# Phase 4 — AI Hub (deploy first — creates ACR, Hub VNet, DNS zones)
+az deployment sub create -l uaenorth -p params/aihub.bicepparam
 
-# Phase 3 — GenAI App
-az deployment sub create -l swedencentral -p params/sandbox-genaiapp.bicepparam
+# ── BU Subscription ───────────────────────────────────────────────────────
+az account set -s <BU_SUBSCRIPTION_ID>
 
-# Phase 4 — AI Hub
-az deployment sub create -l swedencentral -p params/sandbox-aihub.bicepparam
+# Phase 1 — Network (BU spoke VNet, no ACR DNS zone — Hub owns it)
+az deployment sub create -l uaenorth -p params/csd-network.bicepparam
+
+# Phase 2 — AI Services (update resource IDs in param file with Phase 1 outputs)
+az deployment sub create -l uaenorth -p params/csd-aiservices.bicepparam
+
+# Phase 3 — GenAI App (update acrId with Hub ACR resource ID)
+az deployment sub create -l uaenorth -p params/csd-genaiapp.bicepparam
+
+# ── Back to Hub Subscription ──────────────────────────────────────────────
+az account set -s <HUB_SUBSCRIPTION_ID>
+
+# Grant AcrPull to BU identity (get principalId from Phase 3 output)
+az deployment sub create -l uaenorth -p params/aihub.bicepparam \
+  -p buAcrPullPrincipals='[{"name":"csd","principalId":"<PHASE3_OUTPUT>"}]'
 ```
 
 Each phase takes 3-8 minutes. Deploy in order — Phase 2+ references outputs from Phase 1.
@@ -122,14 +134,14 @@ infra/
 │   │   │   ├── apim-premiumv2.bicep    # APIM AI Gateway (toggleable)
 │   │   │   ├── apim-compass-api.bicep  # Compass API + operations + policies on APIM
 │   │   │   ├── apim-kv-role.bicep      # APIM MI → KV Secrets User (for Named Values)
-│   │   │   └── compass-pe.bicep        # External LLM Private Endpoint (toggleable)
-│   │   └── genaiapp/
-│   │       └── acr-pull-role.bicep     # Cross-RG ACR pull assignment
+│   │   │   ├── compass-pe.bicep        # External LLM Private Endpoint (toggleable)
+│   │   │   └── acr-pull-role.bicep     # AcrPull role assignment (BU identity → Hub ACR)
+│   │   └── aiservices/                 # Custom AI Foundry + Cosmos modules (policy-safe)
 │   └── params/
-│       ├── sandbox-network.bicepparam
-│       ├── sandbox-aiservices.bicepparam
-│       ├── sandbox-genaiapp.bicepparam
-│       └── sandbox-aihub.bicepparam
+│       ├── aihub.bicepparam            # AI Hub (Hub subscription)
+│       ├── csd-network.bicepparam      # CSD BU network (BU subscription)
+│       ├── csd-aiservices.bicepparam   # CSD BU AI services (BU subscription)
+│       └── csd-genaiapp.bicepparam     # CSD BU GenAI app (BU subscription)
 └── tf/                                 # Terraform equivalent (planned)
 ```
 
@@ -146,7 +158,38 @@ Edit the parameter files in `infra/bicep/params/` to configure for your environm
 | `deployExternalLlmPe` | aihub params | `true` to deploy external LLM Private Endpoint |
 | `deployCompassApi` | aihub params | `true` to configure Compass API on APIM (requires `deployApim`) |
 | `deployApimConnection` | aiservices params | `true` to create Foundry → APIM connection for external LLM |
+| `buAcrPullPrincipals` | aihub params | Array of BU identities needing AcrPull: `[{name:"csd", principalId:"xxx"}]` |
 | `deployerPrincipalId` | aiservices params | Your Entra Object ID for Key Vault admin |
+
+## Hub-Spoke Network (Cross-Subscription ACR Access)
+
+When the AI Hub is in a **separate subscription**, BU Container Apps and Foundry agents reach the hub ACR through the **platform firewall** (no VNet peering between spokes).
+
+### Firewall rules required
+
+| Rule | Source (BU spoke) | Destination (AI Hub) | Port | Protocol |
+|------|-------------------|---------------------|------|----------|
+| ACA → ACR | `snet-aca` | ACR PE private IP | 443 | TCP |
+| Agents → ACR | `snet-foundry-agents` | ACR PE private IP | 443 | TCP |
+| ACA → APIM | `snet-aca` | APIM private IP | 443 | TCP |
+| Agents → APIM | `snet-foundry-agents` | APIM private IP | 443 | TCP |
+| APIM → Compass | `snet-apim` | Compass PE private IP | 443 | TCP |
+
+### DNS resolution
+
+BU spoke VNets must resolve `privatelink.azurecr.io` and `privatelink.azure-api.net` to the hub PE private IPs. This requires the platform's existing DNS forwarding infrastructure (Azure DNS Private Resolver or conditional forwarders).
+
+### RBAC (AcrPull)
+
+Pass BU identity principal IDs to `main-aihub.bicep` via the `buAcrPullPrincipals` param. As BUs onboard, add their UAMI and redeploy:
+
+```bash
+az account set -s <HUB_SUBSCRIPTION_ID>
+az deployment sub create -l uaenorth -p params/aihub.bicepparam \
+  -p buAcrPullPrincipals='[{"name":"csd","principalId":"<id>"},{"name":"fin","principalId":"<id>"}]'
+```
+
+Docs: [ACR Private Link](https://learn.microsoft.com/azure/container-registry/container-registry-private-link) · [ACR Firewall Rules](https://learn.microsoft.com/azure/container-registry/container-registry-firewall-access-rules) · [Container Apps Networking](https://learn.microsoft.com/azure/container-apps/networking)
 
 ## Why Custom Modules Instead of AVM Patterns?
 
@@ -174,18 +217,23 @@ This landing zone uses [Core42 Compass](https://www.core42.ai/compass/documentat
 **Stage 1 — Deploy without Compass** (no Core42 dependency):
 
 ```bash
-# Phases 1–4 with Compass toggles off (default)
-az deployment sub create -l swedencentral -p params/sandbox-network.bicepparam
-az deployment sub create -l swedencentral -p params/sandbox-aiservices.bicepparam
-az deployment sub create -l swedencentral -p params/sandbox-genaiapp.bicepparam
-az deployment sub create -l swedencentral -p params/sandbox-aihub.bicepparam   # deployApim=false, deployCompassPe=false
+# Hub subscription — deploy AI Hub first
+az account set -s <HUB_SUBSCRIPTION_ID>
+az deployment sub create -l uaenorth -p params/aihub.bicepparam
+
+# BU subscription — deploy BU phases
+az account set -s <BU_SUBSCRIPTION_ID>
+az deployment sub create -l uaenorth -p params/csd-network.bicepparam
+az deployment sub create -l uaenorth -p params/csd-aiservices.bicepparam
+az deployment sub create -l uaenorth -p params/csd-genaiapp.bicepparam
 ```
 
 **Stage 2 — Enable Compass** (once you have Core42 details):
 
 ```bash
-# 2a. Redeploy Phase 4 with Compass PE + APIM + Compass API enabled
-az deployment sub create -l swedencentral -p params/sandbox-aihub.bicepparam \
+# 2a. Redeploy AI Hub with Compass PE + APIM enabled (Hub subscription)
+az account set -s <HUB_SUBSCRIPTION_ID>
+az deployment sub create -l uaenorth -p params/aihub.bicepparam \
   -p deployApim=true \
   -p deployCompassPe=true \
   -p compassResourceId='<Resource ID from Core42>' \
@@ -195,11 +243,12 @@ az deployment sub create -l swedencentral -p params/sandbox-aihub.bicepparam \
 # 2b. Wait for Core42 to approve the PE (typically within 24h)
 
 # 2c. Store Compass API key in Hub Key Vault
-az keyvault secret set --vault-name kv-<bu>-hub-<env>-<region>-001 \
+az keyvault secret set --vault-name kv-<org>-hub-<env>-<region>-001 \
   --name compass-api-key --value '<API key from Core42>'
 
-# 2d. Redeploy Phase 2 with Foundry → APIM connection
-az deployment sub create -l swedencentral -p params/sandbox-aiservices.bicepparam \
+# 2d. Redeploy Phase 2 with Foundry → APIM connection (BU subscription)
+az account set -s <BU_SUBSCRIPTION_ID>
+az deployment sub create -l uaenorth -p params/csd-aiservices.bicepparam \
   -p deployApimConnection=true \
   -p apimCompassEndpointUrl='https://<apim-name>.azure-api.net/compass' \
   -p apimSubscriptionKey='<APIM subscription key>'

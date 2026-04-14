@@ -1,8 +1,11 @@
 using '../main-aiservices.bicep'
 
 // ============================================================================
-// Sandbox: CSD Business Unit — Sweden Central
-// Requires Phase 1 (network) to be deployed first.
+// CSD Business Unit — AI Services (Sweden Central)
+//
+// Requires Phase 1 (network) deployed first.
+//
+// Deploy: az deployment sub create -l swedencentral -p params/csd-aiservices.bicepparam
 // ============================================================================
 
 param location = 'swedencentral'
@@ -13,7 +16,7 @@ param instance = '001'
 
 param deployerPrincipalId = readEnvironmentVariable('DEPLOYER_PRINCIPAL_ID', '')
 
-// Phase 1 outputs — update after deploying main-network.bicep
+// Phase 1 outputs
 param peSubnetId = '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-network-dev-swc-001/providers/Microsoft.Network/virtualNetworks/vnet-csd-dev-swc-001/subnets/snet-pe'
 param lawId = '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-network-dev-swc-001/providers/Microsoft.OperationalInsights/workspaces/law-csd-dev-swc-001'
 param dnsZoneIds = [
