@@ -4,6 +4,13 @@
 !README.md
 !infra/
 !infra/**
+!app/
+!app/**
+
+# Python
+app/.venv/
+app/__pycache__/
+app/checks/__pycache__/
 
 # Design doc (kept locally, not in repo)
 design-doc.md
