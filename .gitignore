@@ -6,8 +6,8 @@
 !infra/**
 !app/
 !app/**
-!cpx-aihub-compass/
-!cpx-aihub-compass/**
+!aihub-compass-setup/
+!aihub-compass-setup/**
 
 # Python
 app/.venv/

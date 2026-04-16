@@ -1,11 +1,11 @@
-# CPX AI Hub + Compass Setup Guide
+# AI Hub + Core42 Compass Setup Guide
 
-Self-contained Bicep deployment for the AI Hub subscription — ACR, APIM, and Core42 Compass integration.
+Self-contained Bicep deployment for the AI Hub subscription — APIM AI Gateway and Core42 Compass integration.
 
 ## What's in this folder
 
 ```
-cpx-aihub-compass/
+aihub-compass-setup/
 ├── main-aihub.bicep            # Main orchestrator (deploy this)
 ├── bicepconfig.json            # Linter rules
 └── modules/
