@@ -4,15 +4,15 @@
 !README.md
 !infra/
 !infra/**
-!app/
-!app/**
+!validation-tests/
+!validation-tests/**
 !aihub-compass-setup/
 !aihub-compass-setup/**
 
 # Python
-app/.venv/
-app/__pycache__/
-app/checks/__pycache__/
+validation-tests/3-dataplane-app/.venv/
+validation-tests/3-dataplane-app/__pycache__/
+validation-tests/3-dataplane-app/checks/__pycache__/
 
 # Design doc (kept locally, not in repo)
 design-doc.md
