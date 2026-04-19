@@ -44,6 +44,18 @@ param lawId string
 @description('Private DNS Zone IDs (from Phase 1) - ordered: cognitiveservices, openai, services.ai, search, documents, blob, vaultcore')
 param dnsZoneIds array
 
+@description('CMK Key Vault resource ID (from Phase 1 — network RG)')
+param cmkKeyVaultId string
+
+@description('CMK Key Vault URI (from Phase 1)')
+param cmkKeyVaultUri string
+
+@description('CMK Key name (from Phase 1)')
+param cmkKeyName string
+
+@description('CMK UAMI resource ID (from Phase 1)')
+param cmkIdentityId string
+
 @description('Deploy APIM connection on Foundry project (requires APIM endpoint URL and subscription key)')
 param deployApimConnection bool = false
 
@@ -81,13 +93,11 @@ var dns = {
 
 var rgName = 'rg-${bu}-aiservices-${env}-${regionAbbr}-${instance}'
 var kvName = 'kv-${bu}-fnd-${env}-${regionAbbr}-${instance}'
-var cmkKeyName = 'cmk-${bu}-${env}'
 var storageName = 'st${bu}fnd${env}${regionAbbr}${instance}'
 var cosmosName = 'cosmos-${bu}-fnd-${env}-${regionAbbr}-${instance}'
 var searchName = 'srch-${bu}-${env}-${regionAbbr}-${instance}'
 var aiAccountName = 'ais-${bu}-${env}-${regionAbbr}-${instance}'
 var projectName = 'proj-${bu}-default-${env}-${regionAbbr}-${instance}'
-var uamiName = 'id-${bu}-cmk-${env}-${regionAbbr}-${instance}'
 
 // ──────────────────────────────────────────────────────────────────────────────
 // RESOURCE GROUP
@@ -100,21 +110,12 @@ resource rg 'Microsoft.Resources/resourceGroups@2024-03-01' = {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// STEP 0: USER-ASSIGNED MANAGED IDENTITY (for CMK — used by Storage + AI Account)
+// NOTE: CMK UAMI + Key Vault + CMK key are in the Network RG (Phase 1).
+// CMK params (cmkKeyVaultId, cmkKeyName, cmkIdentityId) are passed from Phase 1 outputs.
 // ──────────────────────────────────────────────────────────────────────────────
 
-module cmkIdentity 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.0' = {
-  scope: rg
-  name: 'deploy-cmk-uami'
-  params: {
-    name: uamiName
-    location: location
-    tags: tags
-  }
-}
-
 // ──────────────────────────────────────────────────────────────────────────────
-// STEP 1: KEY VAULT (deploy first — needed for CMK)
+// STEP 1: KEY VAULT (Foundry secrets only — CMK key is in network RG)
 // ──────────────────────────────────────────────────────────────────────────────
 
 module keyVault 'br/public:avm/res/key-vault/vault:0.13.3' = {
@@ -150,22 +151,10 @@ module keyVault 'br/public:avm/res/key-vault/vault:0.13.3' = {
         workspaceResourceId: lawId
       }
     ]
-    // CMK key - on redeploy, existing key is reused
-    keys: [
-      {
-        name: cmkKeyName
-        kty: 'RSA'
-        keySize: 2048
-      }
-    ]
     roleAssignments: [
       {
         principalId: deployerPrincipalId
         roleDefinitionIdOrName: 'Key Vault Administrator'
-      }
-      {
-        principalId: cmkIdentity.outputs.principalId
-        roleDefinitionIdOrName: 'Key Vault Crypto Service Encryption User'
       }
     ]
   }
@@ -190,12 +179,12 @@ module storage 'br/public:avm/res/storage/storage-account:0.26.2' = {
     minimumTlsVersion: 'TLS1_2'
     requireInfrastructureEncryption: true
     managedIdentities: {
-      userAssignedResourceIds: [cmkIdentity.outputs.resourceId]
+      userAssignedResourceIds: [cmkIdentityId]
     }
     customerManagedKey: {
-      keyVaultResourceId: keyVault.outputs.resourceId
+      keyVaultResourceId: cmkKeyVaultId
       keyName: cmkKeyName
-      userAssignedIdentityResourceId: cmkIdentity.outputs.resourceId
+      userAssignedIdentityResourceId: cmkIdentityId
     }
     networkAcls: {
       defaultAction: 'Deny'
@@ -233,8 +222,8 @@ module cosmosDb 'modules/aiservices/cosmos-db-account.bicep' = {
     name: cosmosName
     location: location
     tags: tags
-    keyVaultKeyUri: '${keyVault.outputs.uri}keys/${cmkKeyName}'
-    uamiResourceId: cmkIdentity.outputs.resourceId
+    keyVaultKeyUri: '${cmkKeyVaultUri}keys/${cmkKeyName}'
+    uamiResourceId: cmkIdentityId
     peSubnetId: peSubnetId
     cosmosDnsZoneId: dnsZoneIds[dns.cosmos]
     lawId: lawId
@@ -304,17 +293,16 @@ module aiAccount 'modules/aiservices/ai-foundry-account.bicep' = {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// STEP 6: Grant AI Account MI KV Crypto role (must propagate before CMK step)
+// STEP 6: Grant AI Account MI → CMK KV Crypto role (cross-RG — network RG)
 // ──────────────────────────────────────────────────────────────────────────────
 
 module aiAccountKvRole 'modules/aiservices/kv-role-assignment.bicep' = {
-  scope: rg
+  scope: resourceGroup(split(cmkKeyVaultId, '/')[2], split(cmkKeyVaultId, '/')[4])
   name: 'deploy-ai-account-kv-role'
   params: {
-    keyVaultName: kvName
-    aiAccountName: aiAccountName
+    keyVaultName: last(split(cmkKeyVaultId, '/'))!
+    principalId: aiAccount.outputs.principalId
   }
-  dependsOn: [keyVault, aiAccount]
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -326,11 +314,11 @@ module cmkSetup 'modules/aiservices/cmk-encryption.bicep' = {
   name: 'deploy-cmk-setup'
   params: {
     aiAccountName: aiAccountName
-    keyVaultName: kvName
+    keyVaultUri: cmkKeyVaultUri
     keyName: cmkKeyName
     location: location
   }
-  dependsOn: [keyVault, aiAccountKvRole]
+  dependsOn: [aiAccountKvRole]
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

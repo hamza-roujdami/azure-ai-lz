@@ -21,7 +21,7 @@ param lawId = '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroup
 // AcrPull is granted from Hub (main-aihub.bicep → buAcrPullPrincipals)
 // After deploying this phase, pass acaIdentityPrincipalId output to the Hub deployment.
 
-// CMK — reuse BU Foundry KV key (from Phase 2)
-param cmkKeyVaultId = '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-aiservices-dev-swc-001/providers/Microsoft.KeyVault/vaults/kv-csd-fnd-dev-swc-001'
+// CMK — from Phase 1 (network RG)
+param cmkKeyVaultId = '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-network-dev-swc-001/providers/Microsoft.KeyVault/vaults/kv-csd-cmk-dev-swc-001'
 param cmkKeyName = 'cmk-csd-dev'
-param cmkIdentityId = '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-aiservices-dev-swc-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-csd-cmk-dev-swc-001'
+param cmkIdentityId = '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-network-dev-swc-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-csd-cmk-dev-swc-001'

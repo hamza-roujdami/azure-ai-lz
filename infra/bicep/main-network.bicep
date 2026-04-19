@@ -46,6 +46,9 @@ param apimSubnetPrefix string = '192.168.3.0/24'
 @description('Deploy ACR DNS zone in BU network (set false when Hub subscription owns the ACR DNS zone)')
 param deployAcrDnsZone bool = false
 
+@description('Deployer principal ID (for initial KV access)')
+param deployerPrincipalId string = ''
+
 // ──────────────────────────────────────────────────────────────────────────────
 // VARIABLES
 // ──────────────────────────────────────────────────────────────────────────────
@@ -62,6 +65,9 @@ var rgName = 'rg-${bu}-network-${env}-${regionAbbr}-${instance}'
 var vnetName = 'vnet-${bu}-${env}-${regionAbbr}-${instance}'
 var lawName = 'law-${bu}-${env}-${regionAbbr}-${instance}'
 var appiName = 'appi-${bu}-${env}-${regionAbbr}-${instance}'
+var cmkKvName = 'kv-${bu}-cmk-${env}-${regionAbbr}-${instance}'
+var cmkKeyName = 'cmk-${bu}-${env}'
+var cmkUamiName = 'id-${bu}-cmk-${env}-${regionAbbr}-${instance}'
 
 // NSG names
 var nsgPeName = 'nsg-${bu}-pe-${env}-${regionAbbr}-${instance}'
@@ -332,6 +338,83 @@ module appInsights 'br/public:avm/res/insights/component:0.6.0' = {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// CMK — Centralized encryption key management for the BU
+//
+// UAMI + Key Vault + RSA-2048 key deployed here so:
+//   - Vendors with Contributor on aiservices/genaiapp RGs can't access CMK
+//   - Network RG = Reader for vendors → CMK is protected by RBAC
+//   - Single key for all BU data stores (Storage, Cosmos, AI Account, App Storage)
+// ──────────────────────────────────────────────────────────────────────────────
+
+module cmkIdentity 'br/public:avm/res/managed-identity/user-assigned-identity:0.4.0' = {
+  scope: rg
+  name: 'deploy-cmk-uami'
+  params: {
+    name: cmkUamiName
+    location: location
+    tags: tags
+  }
+}
+
+module cmkKeyVault 'br/public:avm/res/key-vault/vault:0.13.3' = {
+  scope: rg
+  name: 'deploy-kv-cmk'
+  params: {
+    name: cmkKvName
+    location: location
+    tags: tags
+    sku: 'standard'
+    enableRbacAuthorization: true
+    enableSoftDelete: true
+    enablePurgeProtection: true
+    publicNetworkAccess: 'Disabled'
+    networkAcls: {
+      defaultAction: 'Deny'
+      bypass: 'AzureServices'
+    }
+    privateEndpoints: [
+      {
+        subnetResourceId: vnet.outputs.subnetResourceIds[0] // snet-pe
+        privateDnsZoneGroup: {
+          privateDnsZoneGroupConfigs: [
+            {
+              privateDnsZoneResourceId: dnsZones[6].outputs.resourceId // privatelink.vaultcore.azure.net
+            }
+          ]
+        }
+      }
+    ]
+    keys: [
+      {
+        name: cmkKeyName
+        kty: 'RSA'
+        keySize: 2048
+      }
+    ]
+    roleAssignments: union(
+      !empty(deployerPrincipalId) ? [
+        {
+          principalId: deployerPrincipalId
+          roleDefinitionIdOrName: 'Key Vault Administrator'
+        }
+      ] : [],
+      [
+        {
+          principalId: cmkIdentity.outputs.principalId
+          roleDefinitionIdOrName: 'Key Vault Crypto Service Encryption User'
+          principalType: 'ServicePrincipal'
+        }
+      ]
+    )
+    diagnosticSettings: [
+      {
+        workspaceResourceId: logAnalytics.outputs.resourceId
+      }
+    ]
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // OUTPUTS (consumed by Phase 2 and Phase 3)
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -370,3 +453,18 @@ output appInsightsInstrumentationKey string = appInsights.outputs.instrumentatio
 
 @description('Private DNS Zone Resource IDs')
 output dnsZoneIds array = [for (zone, i) in privateDnsZones: dnsZones[i].outputs.resourceId]
+
+@description('CMK Key Vault resource ID')
+output cmkKeyVaultId string = cmkKeyVault.outputs.resourceId
+
+@description('CMK Key Vault URI')
+output cmkKeyVaultUri string = cmkKeyVault.outputs.uri
+
+@description('CMK Key name')
+output cmkKeyName string = cmkKeyName
+
+@description('CMK UAMI resource ID')
+output cmkIdentityId string = cmkIdentity.outputs.resourceId
+
+@description('CMK UAMI principal ID')
+output cmkIdentityPrincipalId string = cmkIdentity.outputs.principalId

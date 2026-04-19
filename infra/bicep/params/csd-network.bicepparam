@@ -14,3 +14,6 @@ param instance = '001'
 
 // ACR DNS zone is owned by Hub — BU does not create it
 param deployAcrDnsZone = false
+
+// Deployer principal ID for CMK KV admin access
+param deployerPrincipalId = readEnvironmentVariable('DEPLOYER_PRINCIPAL_ID', '')

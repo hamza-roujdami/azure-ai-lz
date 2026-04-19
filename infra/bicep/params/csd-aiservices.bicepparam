@@ -28,3 +28,9 @@ param dnsZoneIds = [
   '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-network-dev-swc-001/providers/Microsoft.Network/privateDnsZones/privatelink.blob.core.windows.net'
   '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-network-dev-swc-001/providers/Microsoft.Network/privateDnsZones/privatelink.vaultcore.azure.net'
 ]
+
+// Phase 1 CMK outputs — update with actual Phase 1 deployment outputs
+param cmkKeyVaultId = '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-network-dev-swc-001/providers/Microsoft.KeyVault/vaults/kv-csd-cmk-dev-swc-001'
+param cmkKeyVaultUri = 'https://kv-csd-cmk-dev-swc-001.vault.azure.net/'
+param cmkKeyName = 'cmk-csd-dev'
+param cmkIdentityId = '/subscriptions/69770eff-2b73-40a9-abc7-0db9dff6c99d/resourceGroups/rg-csd-network-dev-swc-001/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-csd-cmk-dev-swc-001'

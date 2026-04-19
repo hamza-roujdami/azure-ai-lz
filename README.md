@@ -20,8 +20,8 @@ Each business unit gets its own subscription with **4 resource groups**, deploye
 
 | Phase | Resource Group | What Gets Deployed |
 |-------|----------------|---------------------|
-| 1 — Network | `rg-{bu}-network` | VNet (4 subnets), NSGs, 8 Private DNS zones, Log Analytics, App Insights |
-| 2 — AI Services | `rg-{bu}-aiservices` | AI Foundry Account + Project, Key Vault, Storage, Cosmos DB, AI Search — all with CMK + Private Endpoints |
+| 1 — Network | `rg-{bu}-network` | VNet (4 subnets), NSGs, 7 Private DNS zones, Log Analytics, App Insights, **CMK Key Vault + UAMI** |
+| 2 — AI Services | `rg-{bu}-aiservices` | AI Foundry Account + Project, Foundry Key Vault (secrets), Storage, Cosmos DB, AI Search — all with CMK (from Network RG) + Private Endpoints |
 | 3 — GenAI App | `rg-{bu}-genaiapp` | Container Apps Environment, App Key Vault, App Storage, Managed Identity |
 | 4 — AI Hub | `rg-{org}-aihub` | ACR + AcrPull roles for BUs, APIM AI Gateway (toggleable), External LLM PE (toggleable) |
 
@@ -33,6 +33,7 @@ Each business unit gets its own subscription with **4 resource groups**, deploye
 │  │ Network RG                                          │    │
 │  │ VNet │ snet-pe │ snet-aca │ snet-agents │ snet-apim │    │
 │  │ NSGs │ Private DNS zones │ Log Analytics             │    │
+│  │ CMK Key Vault + UAMI (encryption keys)              │    │
 │  └─────────────────────────────────────────────────────┘    │
 │                                                             │
 │  ┌──────────────────────┐  ┌────────────────────────────┐   │
@@ -40,7 +41,7 @@ Each business unit gets its own subscription with **4 resource groups**, deploye
 │  │ AI Foundry Account   │  │ Container Apps Env         │   │
 │  │  └─ Project(s)       │  │  └─ Frontend / Orchestrator│   │
 │  │  └─ Agent Service    │  │ App Key Vault              │   │
-│  │ Key Vault (CMK)      │  │ App Storage                │   │
+│  │ Foundry Key Vault    │  │ App Storage (CMK)          │   │
 │  │ Storage (CMK, ZRS)   │  │ Managed Identity           │   │
 │  │ Cosmos DB (CMK)      │  └────────────────────────────┘   │
 │  │ AI Search (CMK)      │                                   │
