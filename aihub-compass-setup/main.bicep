@@ -65,6 +65,9 @@ param productName string = 'cpx-compass'
 @description('Product display name')
 param productDisplayName string = 'CPX Compass'
 
+@description('APIM system-assigned managed identity principal ID (run: az apim show -n <name> -g <rg> --query identity.principalId -o tsv)')
+param apimPrincipalId string
+
 // ──────────────────────────────────────────────────────────────────────────────
 // EXISTING RESOURCES
 // ──────────────────────────────────────────────────────────────────────────────
@@ -86,7 +89,7 @@ resource kvSecretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(kv.id, apim.id, '4633458b-17de-408a-b874-0445c86b69e6')
   scope: kv
   properties: {
-    principalId: apim.identity.principalId
+    principalId: apimPrincipalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
@@ -189,7 +192,7 @@ resource getDeploymentPolicy 'Microsoft.ApiManagement/service/apis/operations/po
   name: 'policy'
   properties: {
     format: 'rawxml'
-    value: '<policies><inbound><base /><return-response><set-status code="200" reason="OK" /><set-header name="Content-Type" exists-action="override"><value>application/json</value></set-header><set-body>@{var name = context.Request.MatchedParameters["deploymentName"]; return $"{{\\"name\\": \\"{name}\\", \\"properties\\": {{\\"model\\": {{\\"format\\": \\"OpenAI\\", \\"name\\": \\"{name}\\", \\"version\\": \\"\\"}}}}}}";};</set-body></return-response></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+    value: loadTextContent('policies/get-deployment.xml')
   }
 }
 
@@ -213,13 +216,15 @@ resource chatCompletionsOp 'Microsoft.ApiManagement/service/apis/operations@2024
   }
 }
 
+var forwardWithKeyPolicy = loadTextContent('policies/forward-with-key.xml')
+
 resource chatCompletionsPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = {
   parent: chatCompletionsOp
   name: 'policy'
   dependsOn: [compassApiKeyNamedValue]
   properties: {
     format: 'rawxml'
-    value: '<policies><inbound><base /><set-header name="api-key" exists-action="override"><value>{{compass-api-key}}</value></set-header></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+    value: forwardWithKeyPolicy
   }
 }
 
@@ -249,7 +254,7 @@ resource embeddingsPolicy 'Microsoft.ApiManagement/service/apis/operations/polic
   dependsOn: [compassApiKeyNamedValue]
   properties: {
     format: 'rawxml'
-    value: '<policies><inbound><base /><set-header name="api-key" exists-action="override"><value>{{compass-api-key}}</value></set-header></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+    value: forwardWithKeyPolicy
   }
 }
 
@@ -279,7 +284,7 @@ resource scorePolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2
   dependsOn: [compassApiKeyNamedValue]
   properties: {
     format: 'rawxml'
-    value: '<policies><inbound><base /><set-header name="api-key" exists-action="override"><value>{{compass-api-key}}</value></set-header></inbound><backend><base /></backend><outbound><base /></outbound><on-error><base /></on-error></policies>'
+    value: forwardWithKeyPolicy
   }
 }
 

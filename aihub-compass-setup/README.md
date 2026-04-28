@@ -16,6 +16,9 @@ Configures an **existing** APIM instance as an OpenAI-compatible proxy to Core42
 aihub-compass-setup/
 ├── main.bicep                  # Step 1: Compass API on APIM (deploy this first)
 ├── foundry-connection.bicep    # Step 2: Foundry → APIM connection (deploy per project)
+├── policies/
+│   ├── forward-with-key.xml    # Injects Compass API key, forwards to backend (Chat, Embeddings, Score)
+│   └── get-deployment.xml      # Returns model detail dynamically (C# expression)
 └── README.md                   # This file
 ```
 
@@ -24,11 +27,16 @@ aihub-compass-setup/
 Deploys on your existing APIM: RBAC, Named Value (KV reference), API + 5 operations + 5 policies, Product + Subscription.
 
 ```bash
+# Get APIM system MI principal ID first
+APIM_MI=$(az apim show -n apim-cpx-aihub-dev-uaen-003 -g rg-cpx-aihub-dev-uaen-001 \
+  --query identity.principalId -o tsv)
+
 az deployment group create \
   -g rg-cpx-aihub-dev-uaen-001 \
   -f main.bicep \
   -p apimName='apim-cpx-aihub-dev-uaen-003' \
-  -p keyVaultName='kv-aihub-dev-uaen-001'
+  -p keyVaultName='kv-aihub-dev-uaen-001' \
+  -p apimPrincipalId="$APIM_MI"
 ```
 
 > Models default to the 6 Core42 Compass models (gpt-5.1, gpt-4.1-mini, o4-mini, text-embedding-3-large, qwen3-reranker, k2-think-core42). Override with `-p compassModels='["model1","model2"]'` if needed.
@@ -39,6 +47,7 @@ az deployment group create \
 |-----------|----------|---------|-------------|
 | `apimName` | Yes | — | Existing APIM resource name |
 | `keyVaultName` | Yes | — | Existing Hub KV name (must have `compass-api-key` secret) |
+| `apimPrincipalId` | Yes | — | APIM system MI principal ID (`az apim show ... --query identity.principalId`) |
 | `backendUrl` | No | `https://api.core42.ai/openai` | Compass backend URL |
 | `compassModels` | No | 6 Core42 models | Model deployment names |
 | `productName` | No | `cpx-compass` | APIM Product name |
@@ -60,11 +69,13 @@ az deployment group create \
 ### Get the APIM subscription key
 
 ```bash
-az apim subscription list \
-  -g rg-cpx-aihub-dev-uaen-001 \
-  -n apim-cpx-aihub-dev-uaen-003 \
-  --query "[?contains(displayName,'Compass')].primaryKey" -o tsv
+# Via REST API
+az rest --method POST \
+  --url "/subscriptions/<SUB_ID>/resourceGroups/rg-cpx-aihub-dev-uaen-001/providers/Microsoft.ApiManagement/service/apim-cpx-aihub-dev-uaen-003/subscriptions/cpx-compass-sub/listSecrets?api-version=2022-08-01" \
+  --query primaryKey -o tsv
 ```
+
+Or from portal: **APIM → Subscriptions → CPX Compass Subscription → Show primary key**.
 
 ### Test (from jumpbox)
 
