@@ -19,6 +19,12 @@ aihub-compass-setup/
 ├── policies/
 │   ├── forward-with-key.xml    # Injects Compass API key, forwards to backend (Chat, Embeddings, Score)
 │   └── get-deployment.xml      # Returns model detail dynamically (C# expression)
+├── agent-test/                 # Step 3: Python scripts to test agents
+│   ├── .env.example            # Environment config (copy to .env)
+│   ├── test_connection.py      # Verify APIM connection in Foundry
+│   ├── create_agent.py         # Create agent using Compass model
+│   ├── chat_with_agent.py      # Interactive chat with agent
+│   └── pyproject.toml          # Python dependencies
 └── README.md                   # This file
 ```
 
@@ -135,23 +141,25 @@ az deployment group create \
 
 ## Step 3 — Test with an Agent
 
-See [references/sample-foundry-apim/03-agent-samples/](../references/sample-foundry-apim/03-agent-samples/) for Python examples.
+```bash
+cd agent-test
 
-```python
-from azure.ai.projects import AIProjectClient
-from azure.identity import DefaultAzureCredential
+# Install dependencies
+pip install uv
+uv sync
 
-client = AIProjectClient(
-    credential=DefaultAzureCredential(),
-    endpoint="<foundry-project-endpoint>"
-)
+# Copy and edit .env
+cp .env.example .env
+# Update AZURE_AI_PROJECT_ENDPOINT with your Foundry project endpoint
 
-agent = client.agents.create_agent(
-    model="gpt-5.1",
-    name="compass-test-agent",
-    instructions="You are a helpful assistant.",
-    headers={"x-ms-enable-preview": "true"},
-)
+# 1. Verify connection exists
+uv run test_connection.py
+
+# 2. Create agent
+uv run create_agent.py
+
+# 3. Chat with agent
+uv run chat_with_agent.py
 ```
 
 ## Architecture

@@ -27,10 +27,12 @@
 //   Reranker:   qwen3-reranker
 //
 // Usage:
+//   APIM_MI=$(az apim show -n <APIM_NAME> -g <HUB_RG> --query identity.principalId -o tsv)
 //   az deployment group create -g <HUB_RG> \
 //     -f main.bicep \
 //     -p apimName=<APIM_NAME> \
-//     -p keyVaultName=<HUB_KV_NAME>
+//     -p keyVaultName=<HUB_KV_NAME> \
+//     -p apimPrincipalId=$APIM_MI
 // ============================================================================
 
 // ──────────────────────────────────────────────────────────────────────────────
