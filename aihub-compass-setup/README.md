@@ -14,12 +14,14 @@ Configures an **existing** APIM instance as an OpenAI-compatible proxy to Core42
 
 ```
 aihub-compass-setup/
-├── main.bicep                  # Step 1: Compass API on APIM (deploy this first)
-├── foundry-connection.bicep    # Step 2: Foundry → APIM connection (deploy per project)
-├── policies/
-│   ├── forward-with-key.xml    # Injects Compass API key, forwards to backend (Chat, Embeddings, Score)
-│   └── get-deployment.xml      # Returns model detail dynamically (C# expression)
-├── agent-test/                 # Step 3: Python scripts to test agents
+├── 01-apim-setup/
+│   ├── main.bicep              # Compass API on APIM (RBAC, Named Value, API, operations, policies, Product)
+│   └── policies/
+│       ├── forward-with-key.xml    # Injects Compass API key, forwards to backend (Chat, Embeddings, Score)
+│       └── get-deployment.xml      # Returns model detail dynamically (C# expression)
+├── 02-foundry-connection/
+│   └── foundry-connection.bicep    # Foundry → APIM connection (deploy per BU project)
+├── 03-agent-test/
 │   ├── .env.example            # Environment config (copy to .env)
 │   ├── test_connection.py      # Verify APIM connection in Foundry
 │   ├── create_agent.py         # Create agent using Compass model
@@ -39,7 +41,7 @@ APIM_MI=$(az apim show -n apim-cpx-aihub-dev-uaen-003 -g rg-cpx-aihub-dev-uaen-0
 
 az deployment group create \
   -g rg-cpx-aihub-dev-uaen-001 \
-  -f main.bicep \
+  -f 01-apim-setup/main.bicep \
   -p apimName='apim-cpx-aihub-dev-uaen-003' \
   -p keyVaultName='kv-aihub-dev-uaen-001' \
   -p apimPrincipalId="$APIM_MI"
@@ -121,7 +123,7 @@ Creates an `ApiManagement` connection in a Foundry project so agents can call Co
 ```bash
 az deployment group create \
   -g rg-csd-aiservices-dev-uaen-001 \
-  -f foundry-connection.bicep \
+  -f 02-foundry-connection/foundry-connection.bicep \
   -p accountName='ai-csd-dev-uaen-001' \
   -p projectName='proj-csd-default-dev-uaen-001' \
   -p targetUrl='https://apim-cpx-aihub-dev-uaen-003.azure-api.net/compass' \
@@ -142,7 +144,7 @@ az deployment group create \
 ## Step 3 — Test with an Agent
 
 ```bash
-cd agent-test
+cd 03-agent-test
 
 # Install dependencies
 pip install uv
