@@ -6,8 +6,8 @@
 //
 // Prerequisites (already done by customer):
 //   1. APIM provisioned (portal or IaC) with system-assigned MI enabled
-//   2. Compass PE approved (10.0.20.7)
-//   3. Hub Key Vault with compass-api-key secret stored
+//   2. Compass PE approved and reachable
+//   3. Hub Key Vault with Compass API key secret stored
 //
 // Deploys:
 //   Step 1: RBAC — APIM MI → Key Vault Secrets User
@@ -51,6 +51,15 @@ param backendUrl string = 'https://api.core42.ai/openai'
 @description('Secret name in Key Vault for the Compass API key')
 param compassApiKeySecretName string = 'compass-api-key'
 
+@description('API identifier in APIM (must be unique per API)')
+param apiName string = 'compass-api'
+
+@description('API URL path prefix (e.g., compass, compass2)')
+param apiPath string = 'compass'
+
+@description('API display name')
+param apiDisplayName string = 'Compass API'
+
 @description('List of Compass model deployment names')
 param compassModels array = [
   'gpt-5.1'
@@ -62,10 +71,10 @@ param compassModels array = [
 ]
 
 @description('Product name for the APIM subscription')
-param productName string = 'cpx-compass'
+param productName string = 'compass'
 
 @description('Product display name')
-param productDisplayName string = 'CPX Compass'
+param productDisplayName string = 'Compass'
 
 @description('APIM system-assigned managed identity principal ID (run: az apim show -n <name> -g <rg> --query identity.principalId -o tsv)')
 param apimPrincipalId string
@@ -106,9 +115,9 @@ resource kvSecretsRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 
 resource compassApiKeyNamedValue 'Microsoft.ApiManagement/service/namedValues@2024-05-01' = {
   parent: apim
-  name: 'compass-api-key'
+  name: compassApiKeySecretName
   properties: {
-    displayName: 'compass-api-key'
+    displayName: compassApiKeySecretName
     secret: true
     keyVault: {
       secretIdentifier: '${kv.properties.vaultUri}secrets/${compassApiKeySecretName}'
@@ -123,10 +132,10 @@ resource compassApiKeyNamedValue 'Microsoft.ApiManagement/service/namedValues@20
 
 resource compassApi 'Microsoft.ApiManagement/service/apis@2024-05-01' = {
   parent: apim
-  name: 'compass-api'
+  name: apiName
   properties: {
-    displayName: 'Compass API'
-    path: 'compass'
+    displayName: apiDisplayName
+    path: apiPath
     serviceUrl: backendUrl
     protocols: ['https']
     subscriptionRequired: true
@@ -218,7 +227,7 @@ resource chatCompletionsOp 'Microsoft.ApiManagement/service/apis/operations@2024
   }
 }
 
-var forwardWithKeyPolicy = loadTextContent('policies/forward-with-key.xml')
+var forwardWithKeyPolicy = replace(loadTextContent('policies/forward-with-key.xml'), '{{compass-api-key}}', '{{${compassApiKeySecretName}}}')
 
 resource chatCompletionsPolicy 'Microsoft.ApiManagement/service/apis/operations/policies@2024-05-01' = {
   parent: chatCompletionsOp

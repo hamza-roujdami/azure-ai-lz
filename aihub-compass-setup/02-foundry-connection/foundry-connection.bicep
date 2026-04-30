@@ -27,7 +27,7 @@ param projectName string
 @description('Connection name')
 param connectionName string = 'compass-apim'
 
-@description('APIM Compass endpoint URL (e.g., https://apim-cpx-aihub-dev-uaen-003.azure-api.net/compass)')
+@description('APIM Compass endpoint URL (e.g., https://<apim-name>.azure-api.net/compass)')
 param targetUrl string
 
 @description('APIM subscription key (from the Product subscription)')

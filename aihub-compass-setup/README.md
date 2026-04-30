@@ -5,8 +5,8 @@ Configures an **existing** APIM instance as an OpenAI-compatible proxy to Core42
 ## Prerequisites (already done)
 
 - [x] APIM provisioned (portal) with **system-assigned managed identity enabled**
-- [x] Compass PE approved (TCP to 10.0.20.7:443 works)
-- [x] Hub Key Vault with `compass-api-key` secret stored
+- [x] Compass PE approved
+- [x] Hub Key Vault with Compass API key secret stored
 - [x] APIM DNS zone (`azure-api.net`) with A record → APIM private IP
 - [x] Compass model names confirmed
 
@@ -36,14 +36,14 @@ Deploys on your existing APIM: RBAC, Named Value (KV reference), API + 5 operati
 
 ```bash
 # Get APIM system MI principal ID first
-APIM_MI=$(az apim show -n apim-cpx-aihub-dev-uaen-003 -g rg-cpx-aihub-dev-uaen-001 \
+APIM_MI=$(az apim show -n <APIM_NAME> -g <HUB_RG> \
   --query identity.principalId -o tsv)
 
 az deployment group create \
-  -g rg-cpx-aihub-dev-uaen-001 \
+  -g <HUB_RG> \
   -f 01-apim-setup/main.bicep \
-  -p apimName='apim-cpx-aihub-dev-uaen-003' \
-  -p keyVaultName='kv-aihub-dev-uaen-001' \
+  -p apimName='<APIM_NAME>' \
+  -p keyVaultName='<HUB_KV_NAME>' \
   -p apimPrincipalId="$APIM_MI"
 ```
 
@@ -54,11 +54,16 @@ az deployment group create \
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `apimName` | Yes | — | Existing APIM resource name |
-| `keyVaultName` | Yes | — | Existing Hub KV name (must have `compass-api-key` secret) |
+| `keyVaultName` | Yes | — | Existing Hub KV name (must have Compass API key secret) |
 | `apimPrincipalId` | Yes | — | APIM system MI principal ID (`az apim show ... --query identity.principalId`) |
 | `backendUrl` | No | `https://api.core42.ai/openai` | Compass backend URL |
+| `compassApiKeySecretName` | No | `compass-api-key` | Secret name in Key Vault |
+| `apiName` | No | `compass-api` | API identifier in APIM (unique per API) |
+| `apiPath` | No | `compass` | API URL path prefix |
+| `apiDisplayName` | No | `Compass API` | API display name |
 | `compassModels` | No | 6 Core42 models | Model deployment names |
 | `productName` | No | `cpx-compass` | APIM Product name |
+| `productDisplayName` | No | `CPX Compass` | Product display name |
 
 ### What it creates
 
@@ -79,22 +84,22 @@ az deployment group create \
 ```bash
 # Via REST API
 az rest --method POST \
-  --url "/subscriptions/<SUB_ID>/resourceGroups/rg-cpx-aihub-dev-uaen-001/providers/Microsoft.ApiManagement/service/apim-cpx-aihub-dev-uaen-003/subscriptions/cpx-compass-sub/listSecrets?api-version=2022-08-01" \
+  --url "/subscriptions/<SUB_ID>/resourceGroups/<HUB_RG>/providers/Microsoft.ApiManagement/service/<APIM_NAME>/subscriptions/<PRODUCT_NAME>-sub/listSecrets?api-version=2022-08-01" \
   --query primaryKey -o tsv
 ```
 
-Or from portal: **APIM → Subscriptions → CPX Compass Subscription → Show primary key**.
+Or from portal: **APIM → Subscriptions → Compass Subscription → Show primary key**.
 
 ### Test (from jumpbox)
 
 ```bash
-APIM_URL="https://apim-cpx-aihub-dev-uaen-003.azure-api.net"
+APIM_URL="https://<APIM_NAME>.azure-api.net"
 APIM_KEY="<subscription-key-from-above>"
 
 # List models
 curl -s -H "api-key: $APIM_KEY" "$APIM_URL/compass/deployments" | jq .
 
-# Chat completion (gpt-5.1)
+# Chat completion
 curl -s -X POST \
   -H "api-key: $APIM_KEY" \
   -H "Content-Type: application/json" \
@@ -122,11 +127,11 @@ Creates an `ApiManagement` connection in a Foundry project so agents can call Co
 
 ```bash
 az deployment group create \
-  -g rg-csd-aiservices-dev-uaen-001 \
+  -g <BU_AISERVICES_RG> \
   -f 02-foundry-connection/foundry-connection.bicep \
-  -p accountName='ai-csd-dev-uaen-001' \
-  -p projectName='proj-csd-default-dev-uaen-001' \
-  -p targetUrl='https://apim-cpx-aihub-dev-uaen-003.azure-api.net/compass' \
+  -p accountName='<FOUNDRY_ACCOUNT>' \
+  -p projectName='<FOUNDRY_PROJECT>' \
+  -p targetUrl='https://<APIM_NAME>.azure-api.net/compass' \
   -p apiKey='<APIM_SUBSCRIPTION_KEY>'
 ```
 
