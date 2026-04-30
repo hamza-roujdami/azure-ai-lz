@@ -50,11 +50,15 @@ Foundry Agent (BU spoke)
 aihub-compass-setup/
 ├── 01-apim-setup/
 │   ├── main.bicep              # LLM API on APIM (RBAC, Named Value, API, operations, policies, Product)
+│   ├── params/
+│   │   └── example.bicepparam      # Template — duplicate per vendor/environment
 │   └── policies/
 │       ├── forward-with-key.xml    # Injects LLM API key, forwards to backend (Chat, Embeddings, Score)
 │       └── get-deployment.xml      # Returns model detail dynamically (C# expression)
 ├── 02-foundry-connection/
-│   └── foundry-connection.bicep    # Foundry → APIM connection (deploy per BU project)
+│   ├── foundry-connection.bicep    # Foundry → APIM connection (deploy per BU project)
+│   └── params/
+│       └── example.bicepparam      # Template — duplicate per BU/project
 ├── 03-agent-test/
 │   ├── .env.example            # Environment config (copy to .env)
 │   ├── test_connection.py      # Verify APIM connection in Foundry
