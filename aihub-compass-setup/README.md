@@ -1,30 +1,30 @@
-# AI Hub — Compass API Setup on Existing APIM
+# AI Hub — External LLM Gateway Setup on Existing APIM
 
 ## Overview
 
-This setup connects **Azure AI Foundry agents** to **Core42 Compass LLMs** through **Azure API Management (APIM)** — enabling enterprise AI workloads to use external language models securely, without exposing API keys or opening public endpoints.
+This setup connects **Microsoft Foundry agents** to **external OpenAI-compatible LLMs** (e.g., Core42 Compass) through **Azure API Management (APIM)** — enabling enterprise AI workloads to use external language models securely, without exposing API keys or opening public endpoints.
 
 ### The Problem
 
-Core42 Compass provides LLMs (GPT-5.1, GPT-4.1 mini, embeddings, rerankers) via a private endpoint. But Foundry agents can't call Compass directly — they need an OpenAI-compatible gateway that handles authentication, model discovery, and request routing.
+External LLM providers (e.g., Core42 Compass) expose models via private endpoints. But Foundry agents can't call them directly — they need an OpenAI-compatible gateway that handles authentication, model discovery, and request routing.
 
 ### The Solution
 
-APIM acts as a **secure proxy** between Foundry and Compass:
+APIM acts as a **secure proxy** between Foundry and the external LLM provider:
 
 ```
 Foundry Agent (BU spoke)
   → APIM connection (category: ApiManagement)
     → APIM Gateway (hub, internal VNet)
-      → Policy injects Compass API key from Key Vault
-        → Compass Private Endpoint
-          → Core42 LLM
+      → Policy injects LLM API key from Key Vault
+        → LLM Private Endpoint
+          → External LLM (e.g., Core42 Compass)
 ```
 
 **What this gives you:**
-- **Zero secrets in code** — Compass API key stored in Key Vault, injected at runtime via APIM Named Value
-- **Fully private** — APIM in Internal VNet mode, Compass via Private Endpoint, no public access
-- **Foundry-compatible** — APIM exposes OpenAI-compatible endpoints (`/deployments`, `/chat/completions`, `/embeddings`, `/score`) so Foundry can discover and use Compass models natively
+- **Zero secrets in code** — LLM API key stored in Key Vault, injected at runtime via APIM Named Value
+- **Fully private** — APIM in Internal VNet mode, LLM via Private Endpoint, no public access
+- **Foundry-compatible** — APIM exposes OpenAI-compatible endpoints (`/deployments`, `/chat/completions`, `/embeddings`, `/score`) so Foundry can discover and use models natively
 - **Reusable** — deploy multiple APIs with different keys, models, or paths by changing parameters
 - **Per-BU isolation** — each Business Unit gets its own Foundry connection and APIM subscription key
 
@@ -32,39 +32,39 @@ Foundry Agent (BU spoke)
 
 | Step | What | Folder |
 |------|------|--------|
-| **1** | Configure Compass API on existing APIM (RBAC, Named Value, API, 5 operations, policies, Product) | `01-apim-setup/` |
+| **1** | Configure LLM API on existing APIM (RBAC, Named Value, API, 5 operations, policies, Product) | `01-apim-setup/` |
 | **2** | Create Foundry → APIM connection (per BU project) | `02-foundry-connection/` |
 | **3** | Test with a Foundry agent (Python SDK) | `03-agent-test/` |
 
 ## Prerequisites
 
 - [x] APIM provisioned (portal) with **system-assigned managed identity enabled**
-- [x] Compass PE approved
-- [x] Hub Key Vault with Compass API key secret stored
+- [x] LLM Private Endpoint approved (e.g., Core42 Compass PE)
+- [x] Hub Key Vault with LLM API key secret stored
 - [x] APIM DNS zone (`azure-api.net`) with A record → APIM private IP
-- [x] Compass model names confirmed
+- [x] Model deployment names confirmed
 
 ## What's in this folder
 
 ```
 aihub-compass-setup/
 ├── 01-apim-setup/
-│   ├── main.bicep              # Compass API on APIM (RBAC, Named Value, API, operations, policies, Product)
+│   ├── main.bicep              # LLM API on APIM (RBAC, Named Value, API, operations, policies, Product)
 │   └── policies/
-│       ├── forward-with-key.xml    # Injects Compass API key, forwards to backend (Chat, Embeddings, Score)
+│       ├── forward-with-key.xml    # Injects LLM API key, forwards to backend (Chat, Embeddings, Score)
 │       └── get-deployment.xml      # Returns model detail dynamically (C# expression)
 ├── 02-foundry-connection/
 │   └── foundry-connection.bicep    # Foundry → APIM connection (deploy per BU project)
 ├── 03-agent-test/
 │   ├── .env.example            # Environment config (copy to .env)
 │   ├── test_connection.py      # Verify APIM connection in Foundry
-│   ├── create_agent.py         # Create agent using Compass model
+│   ├── create_agent.py         # Create agent using external LLM model
 │   ├── chat_with_agent.py      # Interactive chat with agent
 │   └── pyproject.toml          # Python dependencies
 └── README.md                   # This file
 ```
 
-## Step 1 — Configure Compass API on APIM
+## Step 1 — Configure LLM API on APIM
 
 Deploys on your existing APIM: RBAC, Named Value (KV reference), API + 5 operations + 5 policies, Product + Subscription.
 
@@ -81,23 +81,23 @@ az deployment group create \
   -p apimPrincipalId="$APIM_MI"
 ```
 
-> Models default to the 6 Core42 Compass models (gpt-5.1, gpt-4.1-mini, o4-mini, text-embedding-3-large, qwen3-reranker, k2-think-core42). Override with `-p compassModels='["model1","model2"]'` if needed.
+> Models default to 6 Core42 Compass models. Override with `-p compassModels='["model1","model2"]'` if using a different provider.
 
 ### Parameters
 
 | Parameter | Required | Default | Description |
 |-----------|----------|---------|-------------|
 | `apimName` | Yes | — | Existing APIM resource name |
-| `keyVaultName` | Yes | — | Existing Hub KV name (must have Compass API key secret) |
+| `keyVaultName` | Yes | — | Existing Hub KV name (must have LLM API key secret) |
 | `apimPrincipalId` | Yes | — | APIM system MI principal ID (`az apim show ... --query identity.principalId`) |
-| `backendUrl` | No | `https://api.core42.ai/openai` | Compass backend URL |
+| `backendUrl` | No | `https://api.core42.ai/openai` | LLM backend URL (PE IP or FQDN) |
 | `compassApiKeySecretName` | No | `compass-api-key` | Secret name in Key Vault |
 | `apiName` | No | `compass-api` | API identifier in APIM (unique per API) |
 | `apiPath` | No | `compass` | API URL path prefix |
 | `apiDisplayName` | No | `Compass API` | API display name |
 | `compassModels` | No | 6 Core42 models | Model deployment names |
-| `productName` | No | `cpx-compass` | APIM Product name |
-| `productDisplayName` | No | `CPX Compass` | Product display name |
+| `productName` | No | `compass` | APIM Product name |
+| `productDisplayName` | No | `Compass` | Product display name |
 
 ### What it creates
 
@@ -108,9 +108,9 @@ az deployment group create \
 | API: `compass-api` (path `/compass`) | OpenAI-compatible proxy |
 | Op: `GET /deployments` | Returns static model list (for Foundry discovery) |
 | Op: `GET /deployments/{name}` | Returns model detail (dynamic) |
-| Op: `POST /deployments/{id}/chat/completions` | Forwards chat requests to Compass (gpt-5.1, gpt-4.1-mini, o4-mini, k2-think-core42) |
-| Op: `POST /deployments/{id}/embeddings` | Forwards embedding requests to Compass (text-embedding-3-large) |
-| Op: `POST /deployments/{id}/score` | Forwards reranker requests to Compass (qwen3-reranker) |
+| Op: `POST /deployments/{id}/chat/completions` | Forwards chat requests to LLM backend |
+| Op: `POST /deployments/{id}/embeddings` | Forwards embedding requests to LLM backend |
+| Op: `POST /deployments/{id}/score` | Forwards reranker/scoring requests to LLM backend |
 | Product + Subscription | Generates APIM subscription key for consumers |
 
 ### Get the APIM subscription key
@@ -122,7 +122,7 @@ az rest --method POST \
   --query primaryKey -o tsv
 ```
 
-Or from portal: **APIM → Subscriptions → Compass Subscription → Show primary key**.
+Or from portal: **APIM → Subscriptions → Show primary key**.
 
 ### Test (from jumpbox)
 
