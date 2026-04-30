@@ -1,8 +1,42 @@
 # AI Hub — Compass API Setup on Existing APIM
 
-Configures an **existing** APIM instance as an OpenAI-compatible proxy to Core42 Compass, then connects it to AI Foundry for agent use.
+## Overview
 
-## Prerequisites (already done)
+This setup connects **Azure AI Foundry agents** to **Core42 Compass LLMs** through **Azure API Management (APIM)** — enabling enterprise AI workloads to use external language models securely, without exposing API keys or opening public endpoints.
+
+### The Problem
+
+Core42 Compass provides LLMs (GPT-5.1, GPT-4.1 mini, embeddings, rerankers) via a private endpoint. But Foundry agents can't call Compass directly — they need an OpenAI-compatible gateway that handles authentication, model discovery, and request routing.
+
+### The Solution
+
+APIM acts as a **secure proxy** between Foundry and Compass:
+
+```
+Foundry Agent (BU spoke)
+  → APIM connection (category: ApiManagement)
+    → APIM Gateway (hub, internal VNet)
+      → Policy injects Compass API key from Key Vault
+        → Compass Private Endpoint
+          → Core42 LLM
+```
+
+**What this gives you:**
+- **Zero secrets in code** — Compass API key stored in Key Vault, injected at runtime via APIM Named Value
+- **Fully private** — APIM in Internal VNet mode, Compass via Private Endpoint, no public access
+- **Foundry-compatible** — APIM exposes OpenAI-compatible endpoints (`/deployments`, `/chat/completions`, `/embeddings`, `/score`) so Foundry can discover and use Compass models natively
+- **Reusable** — deploy multiple APIs with different keys, models, or paths by changing parameters
+- **Per-BU isolation** — each Business Unit gets its own Foundry connection and APIM subscription key
+
+### 3 Steps
+
+| Step | What | Folder |
+|------|------|--------|
+| **1** | Configure Compass API on existing APIM (RBAC, Named Value, API, 5 operations, policies, Product) | `01-apim-setup/` |
+| **2** | Create Foundry → APIM connection (per BU project) | `02-foundry-connection/` |
+| **3** | Test with a Foundry agent (Python SDK) | `03-agent-test/` |
+
+## Prerequisites
 
 - [x] APIM provisioned (portal) with **system-assigned managed identity enabled**
 - [x] Compass PE approved
@@ -167,17 +201,6 @@ uv run create_agent.py
 
 # 3. Chat with agent
 uv run chat_with_agent.py
-```
-
-## Architecture
-
-```
-Foundry Agent (BU spoke)
-  → APIM connection (category: ApiManagement)
-    → APIM Gateway (hub, internal VNet)
-      → ChatCompletions policy injects {{compass-api-key}} from KV
-        → Compass PE (10.0.20.7:443)
-          → Core42 Compass LLM
 ```
 
 ## Troubleshooting
