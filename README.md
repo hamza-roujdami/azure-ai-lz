@@ -1,6 +1,6 @@
 # Azure AI Landing Zone
 
-A **production-grade Infrastructure-as-Code** solution to build a secure Agentic AI platform on Azure. 
+Bicep Infrastructure-as-Code for deploying a secure **Agentic AI platform** on Azure using **Microsoft Foundry**, **Azure Container Apps**, and **APIM as AI Gateway**.
 
 Built for organizations with multiple business units, multiple AI developer teams, and strict security requirements (CMK encryption, private networking, managed identities only).
 
@@ -131,19 +131,17 @@ infra/
 │   │   │   ├── cmk-encryption.bicep
 │   │   │   ├── kv-role-assignment.bicep
 │   │   │   └── foundry-apim-connection.bicep  # Foundry → APIM external LLM connection
-│   │   ├── aihub/
-│   │   │   ├── apim-premiumv2.bicep    # APIM AI Gateway (toggleable)
-│   │   │   ├── apim-compass-api.bicep  # Compass API + operations + policies on APIM
-│   │   │   ├── apim-kv-role.bicep      # APIM MI → KV Secrets User (for Named Values)
-│   │   │   ├── compass-pe.bicep        # External LLM Private Endpoint (toggleable)
-│   │   │   └── acr-pull-role.bicep     # AcrPull role assignment (BU identity → Hub ACR)
-│   │   └── aiservices/                 # Custom AI Foundry + Cosmos modules (policy-safe)
+│   │   └── aihub/
+│   │       ├── apim-premiumv2.bicep    # APIM AI Gateway (toggleable)
+│   │       ├── apim-compass-api.bicep  # Compass API + operations + policies on APIM
+│   │       ├── apim-kv-role.bicep      # APIM MI → KV Secrets User (for Named Values)
+│   │       ├── compass-pe.bicep        # External LLM Private Endpoint (toggleable)
+│   │       └── acr-pull-role.bicep     # AcrPull role assignment (BU identity → Hub ACR)
 │   └── params/
 │       ├── aihub.bicepparam            # AI Hub (Hub subscription)
 │       ├── csd-network.bicepparam      # CSD BU network (BU subscription)
 │       ├── csd-aiservices.bicepparam   # CSD BU AI services (BU subscription)
 │       └── csd-genaiapp.bicepparam     # CSD BU GenAI app (BU subscription)
-└── tf/                                 # Terraform equivalent (planned)
 ```
 
 ## Customization
