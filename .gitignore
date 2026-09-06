@@ -1,0 +1,15 @@
+# Build outputs / local
+.azure/
+*.azuretmp
+bicepconfig.json.bak
+
+# azd
+.azure
+
+# OS / editor
+.DS_Store
+.vscode/
+*.log
+
+# Node / tooling (if added later)
+node_modules/

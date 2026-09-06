@@ -1,0 +1,10 @@
+# AI Platform Landing Zone — azd definition
+# Deploys the AI Spoke (Foundry + data) and, when deployHub=true, the AI Hub (APIM gateway).
+name: ai-platform-lz
+metadata:
+  template: ai-platform-lz@0.1.0
+
+infra:
+  provider: bicep
+  path: infra
+  module: main

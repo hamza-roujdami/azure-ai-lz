@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "resourceGroup": "rg-",
+  "virtualNetwork": "vnet-",
+  "networkSecurityGroup": "nsg-",
+  "apiManagement": "apim-",
+  "apiCenter": "apic-",
+  "logAnalyticsWorkspace": "log-",
+  "applicationInsights": "appi-",
+  "aiFoundry": "aif-",
+  "aiFoundryProject": "proj-",
+  "aiSearch": "srch-",
+  "cosmosDb": "cosmos-",
+  "storageAccount": "st",
+  "keyVault": "kv-",
+  "containerAppsEnvironment": "cae-",
+  "containerRegistry": "cr",
+  "appConfiguration": "appcs-",
+  "eventHubNamespace": "evhns-",
+  "managedIdentity": "id-",
+  "publicIpAddress": "pip-",
+  "privateEndpoint": "pep-"
+}
