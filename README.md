@@ -8,11 +8,11 @@ You get an Azure AI Foundry workload with its data services, a Container Apps ru
 agent containers, and optionally an API Management gateway in front of your models. Everything runs
 on a private network with no public data-plane access.
 
-![Architecture of the AI Platform Landing Zone: an AI spoke holding Foundry hosted agents, private data services and a Container Apps runtime, an AI hub holding API Management and shared model deployments, and a shared private network foundation](docs/architecture.svg)
+![Architecture of the AI Platform Landing Zone: an AI spoke holding Foundry hosted agents, private data services and a Container Apps runtime, an AI hub holding API Management and shared model deployments, and a shared private network foundation](docs/architecture.png)
 
 The diagram source is [docs/arch.excalidraw](docs/arch.excalidraw), editable at
-[excalidraw.com](https://excalidraw.com). For the reasoning behind the layout, see
-[docs/architecture.md](docs/architecture.md).
+[excalidraw.com](https://excalidraw.com); [docs/architecture.svg](docs/architecture.svg) is the
+vector export. For the reasoning behind the layout, see [docs/architecture.md](docs/architecture.md).
 
 ## What you can run on it
 
