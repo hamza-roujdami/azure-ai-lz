@@ -219,6 +219,17 @@ Chargeback rules differ too much between organisations to be worth guessing at, 
 lines in an Azure Function, a Logic App, or a Container Apps job. This repo gives you both ends of
 the pipe and the identity that connects them.
 
+To confirm events are flowing, read the `IncomingMessages` metric on the Event Hub namespace. Allow
+a few minutes before trusting a zero: the gateway logger is buffered and the metric itself lags, so
+a query run immediately after a request will report nothing even when the pipe is healthy.
+
+```bash
+az monitor metrics list \
+  --resource "$(az eventhubs namespace show -g <rg> -n <namespace> --query id -o tsv)" \
+  --metric IncomingMessages --aggregation Total --interval PT1M \
+  --start-time "$(date -u -v-20M +%Y-%m-%dT%H:%M:%SZ)"
+```
+
 ## Deploying part of the landing zone
 
 Both pillars deploy by default. `deploySpoke` and `deployHub` let you deploy one on its own, for
